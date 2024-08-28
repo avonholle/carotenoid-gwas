@@ -1,0 +1,135 @@
+--- 
+title: "Tables and Figures for carotenoid GWAS"
+description: Summary of analyses
+output:
+  bookdown::html_document2:
+  df_print: paged
+  toc: TRUE
+  toc_depth: 3
+  fig_caption: TRUE
+linkcolor: blue
+citecolor: blue
+always_allow_html: yes
+urlcolor: blue
+geometry: margin=1cm
+link-citations: yes
+---
+
+<!-- NOTE: all information for this file take from ~\National Institutes of Health\NIEHS-Von Holle BCBB Postdoctoral work - General\seasonal patterns\scripts\seasonal_variation_function_20221104.Rmd -->
+
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = F, 
+                      eval = T, 
+                      fig.width=6,
+                      fig.height=6,
+                      fig.cap=T,
+                      message=F,
+                      float=F,
+                      fig.pos="H",
+                      results = 'markup', # hide all results
+                      warning = F)
+
+```
+
+
+```{r, include=F, eval=T}
+
+require(knitr)
+require(kableExtra)
+require(stargazer) 
+require(nlme)
+require(tidyr)
+require(ggplot2)
+require(gtsummary) # this table making package works better with haven objects
+require(stringr)
+require(labelled)
+
+```
+
+<!-- NOTE: All files run on Wine server with submit1.sh shell script. This shell script runs run-plink-handle-clean.R, which renders each .Rmd file in the order in which they should be run for data cleaning and analyses. -->
+
+```{r, include=F}
+
+# source: W:\projects\carot\assoc1.Rmd
+
+load(file="pheno-table2.RData") # tab.pvals, pheno.geno.sub
+
+#load(file="p2-sig-models.RData") # dat.models
+load(file="p2-sig-models2.RData") # dat.models2
+
+load(file="U:/projects/carotenoids/sections/table1.RData") # df2.sub.obs from U:\projects\carotenoids\sections\table1.Rmd
+var_label(df2.sub.obs$Lutzein) = "Lutein and Zeaxanthine"
+
+load(file="posthoc-recessive.RData") # dat.models2.rec from posthoc-ldcheck.Rmd
+
+
+```
+
+```{r}
+# Source: https://www.danieldsjoberg.com/gtsummary/articles/themes.html
+theme_gtsummary_journal(journal="jama")
+names(df2.sub.obs)[which(names(df2.sub.obs) %in% c("SE_RACE_ETH"))] = "Race/ethnicity"
+
+df2.sub.obs$`Race/ethnicity` = factor(df2.sub.obs$`Race/ethnicity`,
+                                      labels = c("Non-Hispanic white",
+                                                 "Non-Hispanic Black",
+                                                 "Hispanic",
+                                                 "Other"))
+
+tbl_summary(data = df2.sub.obs[,names(df2.sub.obs)[!(names(df2.sub.obs) %in% c("Retinol", "Tocopherol", "HH_PSID", "PSID"))]],
+            by=sample,
+            missing="no") %>%
+  modify_caption("**Descriptive statistics by sample**") 
+
+```
+
+<br>
+<br>
+
+```{r, eval=T}
+
+dat.models2$PVALUE = as.character(dat.models2$PVALUE)# change p-value so scientific notation shows up in kableextra
+
+dat.models2.rec$PVALUE = as.character(dat.models2.rec$PVALUE)# change p-value so scientific notation shows up in kableextra
+
+#head(dat.models2.rec)
+dat.models2 = dat.models2[order(dat.models2$ID),]
+
+#dat.both = rbind.data.frame(dat.models2, dat.models2.rec)
+
+kable(dat.models2[c( "pheno", "CHROM", "POS", "A1", "BETA", "SE", "PVALUE")],
+      booktabs=T,
+      row.names = F,
+      col.names = c("Phenotype", "Chromosome", "Position",  "Index allele", "Beta", "SE", "p-value"),
+      caption="Association tests for rs6564851 and rs6420424",
+      digits=3) %>%
+  pack_rows(index = table(dat.models2$ID)) %>% 
+  column_spec(1:7, width="10em") %>%
+#  pack_rows("Additive association", 1, 4) %>%
+#  pack_rows("Recessive association", 5, 8) %>%
+  kable_styling(full_width = F, position = "left")
+
+```
+
+
+<br>
+<br>
+
+
+<!-- Source: https://stackoverflow.com/questions/13848137/figure-captions-references-using-knitr-and-markdown-to-html -->
+
+```{r, fig.cap="Manhattan plot for Lutein and Zeaxanthin phenotype"}
+knitr::include_graphics("Manhattan.inv.plot.lutzea.cont.linear.png")
+```
+
+
+<br>
+<br>
+
+
+```{r, fig.cap="QQ plot for Lutein and Zeaxanthin phenotype"}
+knitr::include_graphics("QQ.inv.plot.lutzea.cont.linear.png")
+```
+
+

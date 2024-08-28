@@ -1,5 +1,4 @@
-# carotenoid-gwas
-Analyses for manuscript titled, "Association between two common SNPs, rs6564851 and rs6420424, and lutein and zeaxanthin levels in a cohort of U.S. women"
+All scripts are in scripts.zip.
 
 Start with submit1.sh using slurm batch script and run on server.
 

@@ -1,0 +1,1795 @@
+---
+title: "GWAS association analyses"
+author: "Ann Von Holle"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+    fig_caption: true
+editor_options: 
+  chunk_output_type: console
+---
+
+
+
+<!-- Sources: 
+  1. Marees AT, de Kluiver H, Stringer S, Vorspan F, Curis E, Marie‐Claire C, et al. A tutorial on conducting genome‐wide association studies: Quality control and statistical analysis. Int J Methods Psychiatr Res. 2018 Feb 27;27(2):e1608. 
+-->
+
+```{r, echo=F, warning=FALSE, message=FALSE, results='hide'}
+library(knitr)
+library(ggplot2)
+library(data.table)
+library(tidyverse)
+library(qqman)
+library(kableExtra)
+library(tidyr)
+library(dplyr)
+require(gtsummary) 
+```
+
+```{r, setup, include=FALSE, cache=FALSE}
+opts_chunk$set(echo=T, cache=F, message=F, warning=F, error=F,
+               eval=T) # only set eval=T if you need to re-run data
+```
+
+
+
+```{r, include=F, echo=F}
+# create a covar text file for plink below
+
+# Indicate working directory (with the slash at the end)
+
+wd <- "~/projects/carot_data/dat/"
+# wd = "W:/projects/carot_data/dat/"
+
+# From pca3.Rmd
+var<-"sample_justaims.all_phase3aims.eigenvec"
+
+# look at PCs from pca3.Rmd
+pca = read.table(file(paste0(wd, var)), header = F, stringsAsFactors=F)
+head(pca)
+colnames(pca) <- c("FID", "IID", paste('PC', c(1:20), sep = ''))
+head(pca)
+
+# select out IID in pca file from fam file 
+
+fam.info = read.table(file='~/projects/carot_data/dat/subsis1c8.fam', header=F)
+IID = fam.info[,2]
+head(IID)
+
+pca2 = pca[pca$IID %in% IID,]
+dim(pca2) # check
+head(pca2)
+
+# export to text file
+write.table(pca2,
+            file="~/projects/carot_data/dat/pcs.txt", 
+            row.names=FALSE,
+            quote=F,
+            col.names = T)
+
+
+```
+
+# GWAS for untransformed variables
+
+
+## Run plink for GWAS
+
+```{sh assoc1}
+#!/bin/bash
+
+#SBATCH --partition=highmem
+#SBATCH --cpus-per-task=15
+#SBATCH --mail-user=ann.vonholle@nih.gov
+#SBATCH --mail-type=END, FAIL
+
+## NOTE: phenotype file from U:\projects\carotenoids\sections\section1.Rmd
+## some sample code from https://ibg.colorado.edu/cdrom2019/colodro_grasby/GWAS_QC_part2/GWAS_QC_part2_practical.pdf
+## subsis1c8 from clean.Rmd
+## phenotype file command line info here: https://www.cog-genomics.org/plink/1.9/input#pheno
+
+## phenotypes are in the following order:  "adjtotcarot"   "adjalphacarot" "adjbetacarot"  "adjlyc"        "adjcryp"       "adjlutzea"     "adjretinol"    "adjtocoph"   
+
+## info for covar: https://www.cog-genomics.org/plink/1.9/input
+## covar file, covar1.txt, made in section1.Rmd
+
+## total carotene
+##plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+##      --linear genotypic hide-covar \
+##      --pheno ~/projects/carot_data/dat-pheno1.txt \
+##      --mpheno adjtotcarot \
+##      --covar  ~/projects/carot_data/dat/covar1.txt \
+##      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+##      --out totcarot.cont
+
+## alpha-carotene
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name adjalphacarot \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out alphacarot.cont
+mv alphacarot.cont.log logs/alphacarot.log
+
+# adjbetacarot
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name adjbetacarot \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out betacarot.cont
+mv betacarot.cont.log logs/betacarot.log
+
+# adjlyc
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name adjlyc \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out lyc.cont
+mv lyc.cont.log logs/lyc.log
+
+# adjcryp
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name adjcryp \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out cryp.cont
+mv cryp.cont.log logs/cryp.log
+      
+      
+# adjlutzea
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name adjlutzea \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out lutzea.cont      
+mv lutzea.cont.log logs/lutzea.log
+
+# adjlutein
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name adjlutein \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out lutein.cont      
+mv lutein.cont.log logs/lutein.log
+
+# adjzea
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name adjzea \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out zea.cont      
+mv zea.cont.log logs/zea.log
+
+# adjcryp, truncated
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name adjcryp_trunc \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out cryp.trunc.cont
+mv cryp.trunc.cont.log logs/cryp.trunc.log
+      
+      
+# adjlutzea, truncated
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name adjlutzea_trunc \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out lutzea.trunc.cont      
+mv lutzea.trunc.cont.log logs/lutzea.trunc.log
+
+
+
+```
+
+
+
+## Data handling for plink output files 
+
+```{sh}
+#!/bin/bash
+
+#SBATCH --partition=highmem
+#SBATCH --cpus-per-task=15
+#SBATCH --mail-user=ann.vonholle@nih.gov
+#SBATCH --mail-type=END, FAIL
+
+## Prepare txt file from plink run in chunk above for Manhattan plots below
+
+## Source: https://ibg.colorado.edu/cdrom2019/colodro_grasby/GWAS_QC_part2/GWAS_QC_part2_practical/Rscript_qqMan.R
+## slide 50/58
+
+
+awk -F" " '$5 == "ADD"'  ~/projects/carot/alphacarot.cont.assoc.linear >  ~/projects/carot/alphacarot.cont.assoc.linear.add
+cut -f 1-50 alphacarot.cont.assoc.linear.add | head -n 10
+
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/alphacarot.cont.assoc.linear.add | grep -v NA > ~/projects/carot/plot.alphacarot.cont.linear.txt
+
+awk -F" " '$5 == "ADD"'  ~/projects/carot/betacarot.cont.assoc.linear >  ~/projects/carot/betacarot.cont.assoc.linear.add
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/betacarot.cont.assoc.linear.add | grep -v NA > ~/projects/carot/plot.betacarot.cont.linear.txt
+
+awk -F" " '$5 == "ADD"'  ~/projects/carot/lyc.cont.assoc.linear >  ~/projects/carot/lyc.cont.assoc.linear.add
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/lyc.cont.assoc.linear.add | grep -v NA > ~/projects/carot/plot.lyc.cont.linear.txt
+
+awk -F" " '$5 == "ADD"'  ~/projects/carot/cryp.cont.assoc.linear >  ~/projects/carot/cryp.cont.assoc.linear.add
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/cryp.cont.assoc.linear.add | grep -v NA > ~/projects/carot/plot.cryp.cont.linear.txt
+
+awk -F" " '$5 == "ADD"'  ~/projects/carot/lutzea.cont.assoc.linear >  ~/projects/carot/lutzea.cont.assoc.linear.add
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/lutzea.cont.assoc.linear.add | grep -v NA > ~/projects/carot/plot.lutzea.cont.linear.txt
+
+awk -F" " '$5 == "ADD"'  ~/projects/carot/lutein.cont.assoc.linear >  ~/projects/carot/lutein.cont.assoc.linear.add
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/lutein.cont.assoc.linear.add | grep -v NA > ~/projects/carot/plot.lutein.cont.linear.txt
+
+awk -F" " '$5 == "ADD"'  ~/projects/carot/zea.cont.assoc.linear >  ~/projects/carot/zea.cont.assoc.linear.add
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/zea.cont.assoc.linear.add | grep -v NA > ~/projects/carot/plot.zea.cont.linear.txt
+
+
+awk -F" " '$5 == "ADD"'  ~/projects/carot/cryp.trunc.cont.assoc.linear >  ~/projects/carot/cryp.trunc.cont.assoc.linear.add
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/cryp.trunc.cont.assoc.linear.add | grep -v NA > ~/projects/carot/plot.cryp.trunc.cont.linear.txt
+
+awk -F" " '$5 == "ADD"'  ~/projects/carot/lutzea.trunc.cont.assoc.linear >  ~/projects/carot/lutzea.trunc.cont.assoc.linear.add
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/lutzea.trunc.cont.assoc.linear.add | grep -v NA > ~/projects/carot/plot.lutzea.trunc.cont.linear.txt
+
+
+
+```
+
+```{r, include=FALSE}
+# make a function to create Manhattan plots and QQ plots
+# Source: https://ibg.colorado.edu/cdrom2019/colodro_grasby/GWAS_QC_part2/GWAS_QC_part2_practical/Rscript_qqMan.R
+# generate Manhattan plots using qqman
+
+# read in txt files made above
+
+make.mp = function(c.type) {
+
+    #wd = "W:/projects/carot/" # debug
+    #c.type = "plot.pheno1.cont.linear"  #debug
+    wd = "~/projects/carot/"
+    var.info <- c.type
+    
+    # Get data and change format
+    
+    data<-NULL
+    data<- read.table(file(paste0(wd, var.info, ".txt")), header = F, stringsAsFactors=F)
+    colnames(data)<-c("CHROM","SNP", "POS", "PVALUE")
+    
+    data$CHROM[which(data$CHROM=="X")]<-23
+    data$CHROM<-as.numeric(data$CHROM)
+    data$POS<-as.numeric(data$POS)
+    data$SNP = as.numeric(data$POS)
+    data$PVALUE<-as.numeric(data$PVALUE)
+    head(data)
+    
+
+    # Make Manhattan plot
+    
+      manhattan(x = data, chr = "CHROM", bp = "POS", p = "PVALUE",  col = c("darkblue","lightblue"), chrlabs = c(1:22))
+    dev.off()
+
+
+}
+```
+
+```{r}
+
+# functions to get Manhattan and qq plots
+# for some reason this chunk stops working after lycopene. Not sure if there is something wrong with cryp file or lutzea file?
+# get some error re log transform not working for the make.mp2 function
+wd = "~/projects/carot/"
+
+name.vars = c('plot.alphacarot.cont.linear', 
+              'plot.betacarot.cont.linear',
+              'plot.lyc.cont.linear',
+              'plot.cryp.cont.linear',
+              'plot.lutzea.cont.linear',
+              'plot.cryp.trunc.cont.linear',
+              'plot.lutzea.trunc.cont.linear',
+              'plot.lutein.cont.linear',
+              'plot.zea.cont.linear')
+
+# source: https://cran.r-project.org/web/packages/qqman/vignettes/qqman.html
+# function to make Manhattan plot
+make.mp2 = function(data){
+  manhattan(x = data, chr = "CHROM", bp = "POS", p = "PVALUE",
+            col = c("darkblue","lightblue"), 
+            annotatePval = 0.05,
+            suggestiveline = F,
+            chrlabs = c(1:22))
+}
+
+# function to make QQ plot including lambda
+make.qq = function(data){
+    alpha<-median(qchisq(1-data$PVALUE,1))/qchisq(0.5,1)
+    qq(data$PVALUE)
+    text(0.5,4, paste("lambda","=",  signif(alpha, digits = 3)) )
+}
+
+```
+
+```{r, results='hide'}
+
+# do plots over all data sets and different carotenoid outcomes
+
+mapply(function(wd, var.info) {
+
+    # Get data and change format
+    data<-NULL
+    data<- read.table(file(paste0(wd, var.info, ".txt")), header = F, stringsAsFactors=F)
+    colnames(data)<-c("CHROM","SNP", "POS", "A1", "TEST", "NMISS", "BETA", "STAT", "PVALUE")
+    
+    data$CHROM[which(data$CHROM=="X")]<-23
+    data$CHROM<-as.numeric(data$CHROM)
+    data$POS<-as.numeric(data$POS)
+
+    # Get the following error for lycopene
+# Quitting from lines 289-319 (assoc1.Rmd) 
+# Error in log10(topSNPs$P) : non-numeric argument to mathematical function
+# Calls: <Anonymous> ... <Anonymous> -> print -> make.mp2 -> manhattan -> textxy
+
+    # fix? Source: https://gist.github.com/cjfiscus/d0f2c883bc1caab0583a
+    data$PVALUE<-as.numeric(as.character(data$PVALUE))
+#    head(data)
+
+    # Manhattan plot  
+    png(filename = paste0(wd, "Manhattan.", var.info, ".png"),
+      width = 31, height = 21, units="cm", res=500, type="cairo")
+          print(make.mp2(data))
+    dev.off()
+    
+    # QQ plot
+   png(filename = paste0(wd,"QQ.", var.info,".png"), width = 31, height = 31, units="cm", res=500, type="cairo")
+     print(make.qq(data))
+   dev.off()
+
+    },
+    wd, name.vars)
+
+```
+
+## Alpha-carotene
+
+![Manhattan plot](Manhattan.plot.alphacarot.cont.linear.png)
+
+
+![QQ plot](QQ.plot.alphacarot.cont.linear.png)
+
+## Beta-carotene
+
+
+![Manhattan plot](Manhattan.plot.betacarot.cont.linear.png)
+
+
+![QQ plot](QQ.plot.betacarot.cont.linear.png)
+
+
+
+## Lycopene
+
+
+![Manhattan plot](Manhattan.plot.lyc.cont.linear.png)
+
+
+![QQ plot](QQ.plot.lyc.cont.linear.png)
+
+
+
+## Cryptoxanthin
+
+
+![Manhattan plot](Manhattan.plot.cryp.cont.linear.png)
+
+
+![QQ plot](QQ.plot.cryp.cont.linear.png)
+
+
+## Lutein and Zeaxanthin
+
+
+![Manhattan plot](Manhattan.plot.lutzea.cont.linear.png)
+
+
+![QQ plot](QQ.plot.lutzea.cont.linear.png)
+
+
+
+## Lutein 
+
+
+![Manhattan plot](Manhattan.plot.lutein.cont.linear.png)
+
+
+![QQ plot](QQ.plot.lutein.cont.linear.png)
+
+
+
+## Zeanxanthin
+
+
+![Manhattan plot](Manhattan.plot.zea.cont.linear.png)
+
+
+![QQ plot](QQ.plot.zea.cont.linear.png)
+
+## Cryptoxanthin, outliers removed
+
+
+![Manhattan plot](Manhattan.plot.cryp.cont.linear.png)
+
+
+![QQ plot](QQ.plot.cryp.cont.linear.png)
+
+
+## Lutein and Zeaxanthin, outliers removed
+
+
+![Manhattan plot](Manhattan.plot.lutzea.cont.linear.png)
+
+
+![QQ plot](QQ.plot.lutzea.cont.linear.png)
+
+
+# GWAS for natural log-transformed variables
+
+
+## Run plink for GWAS
+
+```{sh}
+#!/bin/bash
+
+#SBATCH --partition=highmem
+#SBATCH --cpus-per-task=15
+#SBATCH --mail-user=ann.vonholle@nih.gov
+#SBATCH --mail-type=END, FAIL
+
+## alpha-carotene
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name log_adjalphacarot \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out log.alphacarot.cont
+mv log.alphacarot.cont.log logs/log.alphacarot.log
+
+# adjbetacarot
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name log_adjbetacarot \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out log.betacarot.cont
+mv log.betacarot.cont.log logs/log.betacarot.log
+
+# adjlyc
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name log_adjlyc \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out log.lyc.cont
+mv log.lyc.cont.log logs/log.lyc.log
+
+# adjcryp
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name log_adjcryp \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out log.cryp.cont
+mv log.cryp.cont.log logs/log.cryp.log
+
+# adjlutzea
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name log_adjlutzea \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out log.lutzea.cont      
+mv log.lutzea.cont.log logs/log.lutzea.log
+
+
+# adjlutein
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name log_adjlutein \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out log.lutein.cont      
+mv log.lutein.cont.log logs/log.lutein.log
+
+
+# adjzea
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name log_adjzea \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out log.zea.cont      
+mv log.zea.cont.log logs/log.zea.log
+
+# adjcryp_trunc
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name log_adjcryp_trunc \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out log.cryp.trunc.cont
+mv log.cryp.trunc.cont.log logs/log.cryp.trunc.log
+
+# adjlutzea_trunc
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name log_adjlutzea_trunc \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out log.lutzea.trunc.cont
+mv log.lutzea.trunc.cont.log logs/log.lutzea.trunc.log
+
+```
+
+## Data handling for plink output files
+
+```{sh}
+#!/bin/bash
+
+#SBATCH --partition=highmem
+#SBATCH --cpus-per-task=15
+#SBATCH --mail-user=ann.vonholle@nih.gov
+#SBATCH --mail-type=END, FAIL
+
+## Prepare txt file for log transformed vars from plink run in chunk above for Manhattan plots below
+
+## Source: https://ibg.colorado.edu/cdrom2019/colodro_grasby/GWAS_QC_part2/GWAS_QC_part2_practical/Rscript_qqMan.R
+## slide 50/58
+
+## select out additive effect
+awk -F" " '$5 == "ADD"'  ~/projects/carot/log.alphacarot.cont.assoc.linear >  ~/projects/carot/log.alphacarot.cont.assoc.linear.add
+
+cut -f 1-50 log.alphacarot.cont.assoc.linear.add | head -n 10
+
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/log.alphacarot.cont.assoc.linear.add | grep -v NA > ~/projects/carot/log.plot.alphacarot.cont.linear.txt
+
+
+## select out additive effect
+awk -F" " '$5 == "ADD"'  ~/projects/carot/log.betacarot.cont.assoc.linear >  ~/projects/carot/log.betacarot.cont.assoc.linear.add
+
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/log.betacarot.cont.assoc.linear.add | grep -v NA > ~/projects/carot/log.plot.betacarot.cont.linear.txt
+
+## select out additive effect
+awk -F" " '$5 == "ADD"'  ~/projects/carot/log.lyc.cont.assoc.linear >  ~/projects/carot/log.lyc.cont.assoc.linear.add
+
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/log.lyc.cont.assoc.linear.add | grep -v NA > ~/projects/carot/log.plot.lyc.cont.linear.txt
+
+## select out additive effect
+awk -F" " '$5 == "ADD"'  ~/projects/carot/log.cryp.cont.assoc.linear >  ~/projects/carot/log.cryp.cont.assoc.linear.add
+
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/log.cryp.cont.assoc.linear.add | grep -v NA > ~/projects/carot/log.plot.cryp.cont.linear.txt
+
+## select out additive effect
+awk -F" " '$5 == "ADD"'  ~/projects/carot/log.lutzea.cont.assoc.linear >  ~/projects/carot/log.lutzea.cont.assoc.linear.add
+
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/log.lutzea.cont.assoc.linear.add | grep -v NA > ~/projects/carot/log.plot.lutzea.cont.linear.txt
+
+## select out additive effect
+awk -F" " '$5 == "ADD"'  ~/projects/carot/log.lutein.cont.assoc.linear >  ~/projects/carot/log.lutein.cont.assoc.linear.add
+
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/log.lutein.cont.assoc.linear.add | grep -v NA > ~/projects/carot/log.plot.lutein.cont.linear.txt
+
+## select out additive effect
+awk -F" " '$5 == "ADD"'  ~/projects/carot/log.zea.cont.assoc.linear >  ~/projects/carot/log.zea.cont.assoc.linear.add
+
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/log.zea.cont.assoc.linear.add | grep -v NA > ~/projects/carot/log.plot.zea.cont.linear.txt
+
+## select out additive effect
+awk -F" " '$5 == "ADD"'  ~/projects/carot/log.cryp.trunc.cont.assoc.linear >  ~/projects/carot/log.cryp.trunc.cont.assoc.linear.add
+
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/log.cryp.trunc.cont.assoc.linear.add | grep -v NA > ~/projects/carot/log.plot.cryp.trunc.cont.linear.txt
+
+## select out additive effect
+awk -F" " '$5 == "ADD"'  ~/projects/carot/log.lutzea.trunc.cont.assoc.linear >  ~/projects/carot/log.lutzea.trunc.cont.assoc.linear.add
+
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/log.lutzea.trunc.cont.assoc.linear.add | grep -v NA > ~/projects/carot/log.plot.lutzea.trunc.cont.linear.txt
+
+
+
+```
+
+
+```{r, results='hide'}
+
+# Manhattan plots and qq plots for log transformed outcomes
+
+wd = "~/projects/carot/"
+
+name.vars.log = c('log.plot.alphacarot.cont.linear', 
+              'log.plot.betacarot.cont.linear',
+              'log.plot.lyc.cont.linear',
+              'log.plot.cryp.cont.linear',
+              'log.plot.lutzea.cont.linear',
+              'log.plot.lutein.cont.linear',
+              'log.plot.zea.cont.linear',
+              'log.plot.cryp.trunc.cont.linear',
+              'log.plot.lutzea.trunc.cont.linear')
+
+# do plots over all data sets and different carotenoid outcomes
+
+mapply(function(wd, var.info) {
+
+    # Get data and change format
+    data<-NULL
+    data<- read.table(file(paste0(wd, var.info, ".txt")), header = F, stringsAsFactors=F)
+    colnames(data)<-c("CHROM","SNP", "POS", "A1", "TEST", "NMISS", "BETA", "STAT", "PVALUE")
+    
+    data$CHROM[which(data$CHROM=="X")]<-23
+    data$CHROM<-as.numeric(data$CHROM)
+    data$POS<-as.numeric(data$POS)
+    data$PVALUE<-as.numeric(as.character(data$PVALUE))
+#    head(data)
+
+    # Manhattan plot  
+    png(filename = paste0(wd, "Manhattan.", var.info, ".png"),
+      width = 31, height = 21, units="cm", res=500, type="cairo")
+          print(make.mp2(data))
+    dev.off()
+    
+    # QQ plot
+   png(filename = paste0(wd,"QQ.", var.info,".png"), width = 31, height = 31, units="cm", res=500, type="cairo")
+     print(make.qq(data))
+   dev.off()
+
+    },
+    wd, name.vars.log)
+
+```
+
+
+## Alpha-carotene
+
+![Manhattan plot](Manhattan.log.plot.alphacarot.cont.linear.png)
+
+
+![QQ plot](QQ.log.plot.alphacarot.cont.linear.png)
+
+## Beta-carotene
+
+
+![Manhattan plot](Manhattan.log.plot.betacarot.cont.linear.png)
+
+
+![QQ plot](QQ.log.plot.betacarot.cont.linear.png)
+
+
+
+## Lycopene
+
+
+![Manhattan plot](Manhattan.log.plot.lyc.cont.linear.png)
+
+
+![QQ plot](QQ.log.plot.lyc.cont.linear.png)
+
+
+
+## Cryp
+
+
+![Manhattan plot](Manhattan.log.plot.cryp.cont.linear.png)
+
+
+![QQ plot](QQ.log.plot.cryp.cont.linear.png)
+
+
+## Lutzea
+
+
+![Manhattan plot](Manhattan.log.plot.lutzea.cont.linear.png)
+
+
+![QQ plot](QQ.log.plot.lutzea.cont.linear.png)
+
+
+## Lutein
+
+
+![Manhattan plot](Manhattan.log.plot.lutein.cont.linear.png)
+
+
+![QQ plot](QQ.log.plot.lutein.cont.linear.png)
+
+
+## Zeanxanthin
+
+
+![Manhattan plot](Manhattan.log.plot.zea.cont.linear.png)
+
+
+![QQ plot](QQ.log.plot.zea.cont.linear.png)
+
+
+## Cryptoxanthin, outliers removed
+
+
+![Manhattan plot](Manhattan.log.plot.cryp.trunc.cont.linear.png)
+
+
+![QQ plot](QQ.log.plot.cryp.trunc.cont.linear.png)
+
+
+## Lutein and Zeaxanthin, outliers removed
+
+
+![Manhattan plot](Manhattan.log.plot.lutzea.trunc.cont.linear.png)
+
+
+![QQ plot](QQ.log.plot.lutzea.trunc.cont.linear.png)
+
+
+
+# GWAS for inverse normal transformed variables
+
+
+Note: The transform in R (of variable x) would be: qnorm((rank(x,na.last="keep")-0.5)/sum(!is.na(x)))
+
+Example of this transform in this paper: https://www.nature.com/articles/nature11401, and a more recent discussion of this transform is here: https://pubmed.ncbi.nlm.nih.gov/31883270/
+
+
+## Run plink for GWAS
+
+```{sh}
+#!/bin/bash
+
+#SBATCH --partition=highmem
+#SBATCH --cpus-per-task=15
+#SBATCH --mail-user=ann.vonholle@nih.gov
+#SBATCH --mail-type=END, FAIL
+
+## alpha-carotene
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name inv_adjalphacarot \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out inv.alphacarot.cont
+mv inv.alphacarot.cont.log logs/inv.alphacarot.log
+
+# adjbetacarot
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name inv_adjbetacarot \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out inv.betacarot.cont
+mv inv.betacarot.cont.log logs/inv.betacarot.log
+
+# adjlyc
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name inv_adjlyc \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out inv.lyc.cont
+mv inv.lyc.cont.log logs/inv.lyc.log
+
+# adjcryp
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name inv_adjcryp \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out inv.cryp.cont
+mv inv.cryp.cont.log logs/inv.cryp.log
+
+# adjlutzea
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name inv_adjlutzea \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out inv.lutzea.cont      
+mv inv.lutzea.cont.log logs/inv.lutzea.log
+
+
+# adjlutein
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name inv_adjlutein \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out inv.lutein.cont      
+mv inv.lutein.cont.log logs/inv.lutein.log
+
+# adjzea
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --linear genotypic hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name inv_adjzea \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --out inv.zea.cont      
+mv inv.zea.cont.log logs/inv.zea.log
+
+```
+
+## Data handling for plink output files
+
+```{sh}
+
+#!/bin/bash
+
+#SBATCH --partition=highmem
+#SBATCH --cpus-per-task=15
+#SBATCH --mail-user=ann.vonholle@nih.gov
+#SBATCH --mail-type=END, FAIL
+
+## Prepare txt file for inv transformed vars from plink run in chunk above for Manhattan plots below
+
+## Source: https://ibg.colorado.edu/cdrom2019/colodro_grasby/GWAS_QC_part2/GWAS_QC_part2_practical/Rscript_qqMan.R
+## slide 50/58
+
+## select out additive effect
+awk -F" " '$5 == "ADD"'  ~/projects/carot/inv.alphacarot.cont.assoc.linear >  ~/projects/carot/inv.alphacarot.cont.assoc.linear.add
+
+cut -f 1-50 inv.alphacarot.cont.assoc.linear.add | head -n 10
+
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/inv.alphacarot.cont.assoc.linear.add | grep -v NA > ~/projects/carot/inv.plot.alphacarot.cont.linear.txt
+
+## select out additive effect
+awk -F" " '$5 == "ADD"'  ~/projects/carot/inv.betacarot.cont.assoc.linear >  ~/projects/carot/inv.betacarot.cont.assoc.linear.add
+
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/inv.betacarot.cont.assoc.linear.add | grep -v NA > ~/projects/carot/inv.plot.betacarot.cont.linear.txt
+
+## select out additive effect
+awk -F" " '$5 == "ADD"'  ~/projects/carot/inv.lyc.cont.assoc.linear >  ~/projects/carot/inv.lyc.cont.assoc.linear.add
+
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/inv.lyc.cont.assoc.linear.add | grep -v NA > ~/projects/carot/inv.plot.lyc.cont.linear.txt
+
+## select out additive effect
+awk -F" " '$5 == "ADD"'  ~/projects/carot/inv.cryp.cont.assoc.linear >  ~/projects/carot/inv.cryp.cont.assoc.linear.add
+
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/inv.cryp.cont.assoc.linear.add | grep -v NA > ~/projects/carot/inv.plot.cryp.cont.linear.txt
+
+## select out additive effect
+awk -F" " '$5 == "ADD"'  ~/projects/carot/inv.lutzea.cont.assoc.linear >  ~/projects/carot/inv.lutzea.cont.assoc.linear.add
+
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/inv.lutzea.cont.assoc.linear.add | grep -v NA > ~/projects/carot/inv.plot.lutzea.cont.linear.txt
+
+
+## select out additive effect: lutein
+awk -F" " '$5 == "ADD"'  ~/projects/carot/inv.lutein.cont.assoc.linear >  ~/projects/carot/inv.lutein.cont.assoc.linear.add
+
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/inv.lutein.cont.assoc.linear.add | grep -v NA > ~/projects/carot/inv.plot.lutein.cont.linear.txt
+
+## select out additive effect: zeanxanthine
+awk -F" " '$5 == "ADD"'  ~/projects/carot/inv.zea.cont.assoc.linear >  ~/projects/carot/inv.zea.cont.assoc.linear.add
+
+awk '{if (NR>1) print $1,$2,$3,$4,$5,$6,$7,$8,$9}' ~/projects/carot/inv.zea.cont.assoc.linear.add | grep -v NA > ~/projects/carot/inv.plot.zea.cont.linear.txt
+
+```
+
+
+```{r,  results='hide'}
+
+# Manhattan plots and qq plots for log transformed outcomes
+
+wd = "~/projects/carot/"
+
+name.vars.log = c('inv.plot.alphacarot.cont.linear', 
+                  'inv.plot.betacarot.cont.linear',
+                  'inv.plot.lyc.cont.linear',
+                  'inv.plot.cryp.cont.linear',
+                  'inv.plot.lutzea.cont.linear',
+                  'inv.plot.lutein.cont.linear',
+                  'inv.plot.zea.cont.linear')
+
+# do plots over all data sets and different carotenoid outcomes
+
+mapply(function(wd, var.info) {
+
+    # Get data and change format
+    data<-NULL
+    data<- read.table(file(paste0(wd, var.info, ".txt")), header = F, stringsAsFactors=F)
+    colnames(data)<-c("CHROM","SNP", "POS", "A1", "TEST", "NMISS", "BETA", "STAT", "PVALUE")
+    
+    data$CHROM[which(data$CHROM=="X")]<-23
+    data$CHROM<-as.numeric(data$CHROM)
+    data$POS<-as.numeric(data$POS)
+    data$PVALUE<-as.numeric(as.character(data$PVALUE))
+#    head(data)
+
+    # Manhattan plot  
+    png(filename = paste0(wd, "Manhattan.", var.info, ".png"),
+      width = 31, height = 21, units="cm", res=500, type="cairo")
+          print(make.mp2(data))
+    dev.off()
+    
+    # QQ plot
+   png(filename = paste0(wd,"QQ.", var.info,".png"), width = 31, height = 31, units="cm", res=500, type="cairo")
+     print(make.qq(data))
+   dev.off()
+
+    },
+    wd, name.vars.log)
+
+```
+
+
+## Alpha-carotene
+
+![Manhattan plot](Manhattan.inv.plot.alphacarot.cont.linear.png)
+
+
+![QQ plot](QQ.inv.plot.alphacarot.cont.linear.png)
+
+## Beta-carotene
+
+
+![Manhattan plot](Manhattan.inv.plot.betacarot.cont.linear.png)
+
+
+![QQ plot](QQ.inv.plot.betacarot.cont.linear.png)
+
+
+
+## Lycopene
+
+
+![Manhattan plot](Manhattan.inv.plot.lyc.cont.linear.png)
+
+
+![QQ plot](QQ.inv.plot.lyc.cont.linear.png)
+
+
+
+## Cryp
+
+
+![Manhattan plot](Manhattan.inv.plot.cryp.cont.linear.png)
+
+
+![QQ plot](QQ.inv.plot.cryp.cont.linear.png)
+
+
+## Lutzea
+
+
+![Manhattan plot](Manhattan.inv.plot.lutzea.cont.linear.png)
+
+
+![QQ plot](QQ.inv.plot.lutzea.cont.linear.png)
+
+
+
+## Lutein
+
+
+![Manhattan plot](Manhattan.inv.plot.lutein.cont.linear.png)
+
+
+![QQ plot](QQ.inv.plot.lutein.cont.linear.png)
+
+
+## Zeanxanthin
+
+
+![Manhattan plot](Manhattan.inv.plot.zea.cont.linear.png)
+
+
+![QQ plot](QQ.inv.plot.zea.cont.linear.png)
+
+
+
+
+
+```{r, include=F}
+
+# Look at table of values for the variants that exceed genome-wide significance
+
+name.vars.log = c('log.plot.alphacarot.cont.linear', 
+              'log.plot.betacarot.cont.linear',
+              'log.plot.lyc.cont.linear',
+              'log.plot.cryp.cont.linear',
+              'log.plot.lutzea.cont.linear',
+              'log.plot.lutein.cont.linear',
+              'log.plot.zea.cont.linear'
+              )
+names.vars = c("Alpha-carotene",
+               "Beta-carotene",
+               "Lycopene",
+               "Cryptoxanthin",
+               "Lutein and Zeaxanthin",
+               "Lutein",
+               "Zeaxanthin"
+               )
+
+#wd = "~/projects/carot/"
+#wd = "W:/projects/carot/"; # debug on local computer
+
+tables = mapply(function(wd, var.info, vnames) {
+
+    # Get data and change format
+    data<-NULL
+    data<- read.table(file(paste0(wd, var.info, ".txt")), header = F, stringsAsFactors=F)
+    colnames(data)<-c("CHROM", "SNP", "POS", "A1", "TEST", "NMISS", "BETA", "STAT", "PVALUE")
+    #data = data[sample(nrow(data), 100),] # for debugging
+    
+    data$CHROM[which(data$CHROM=="X")]<-23
+    data$CHROM<-as.numeric(data$CHROM)
+    data$POS<-as.numeric(data$POS)
+    data$PVALUE<-as.numeric(as.character(data$PVALUE))
+#    head(data)
+
+    table = kable(#data[data$PVALUE<0.1,],# for debugging
+      data[data$PVALUE<5e-8,],
+      row.names = F,
+      booktabs=T, 
+      caption = paste0("Variants meeting genome-wide significance level for ", vnames))
+    
+    return(table)
+    
+    },
+    wd, name.vars.log, names.vars)
+
+# print tables
+lapply(1:length(tables), function(x) tables[[x]])
+
+
+```
+
+# Table of variants meeting genome-wide significance threshold of 5e-8
+
+```{r}
+# Look at table of values for the variants that exceed genome-wide significance
+# 
+# name.vars.log = c('log.plot.alphacarot.cont.linear', 
+#               'log.plot.betacarot.cont.linear',
+#               'log.plot.lyc.cont.linear',
+#               'log.plot.lutein.cont.linear',
+#               'log.plot.zea.cont.linear',
+#               'log.plot.cryp.trunc.cont.linear',
+#               'log.plot.lutzea.trunc.cont.linear'
+#               )
+name.vars.log = c('inv.plot.alphacarot.cont.linear', 
+              'inv.plot.betacarot.cont.linear',
+              'inv.plot.lyc.cont.linear',
+              'inv.plot.cryp.cont.linear',
+              'inv.plot.lutzea.cont.linear',
+              'inv.plot.lutein.cont.linear',
+              'inv.plot.zea.cont.linear'
+              )
+names.vars = c("Alpha-carotene",
+               "Beta-carotene",
+               "Lycopene",
+               "Cryptoxanthin",
+               "Lutein and Zeaxanthin",
+               "Lutein",
+               "Zeaxanthin"
+               )
+
+wd = "~/projects/carot/"
+
+
+# alternate way for tables of significant variants. 
+# append data sets and print off one table by phenotype
+
+get.dat = function(wd, var.info, vnames) {
+
+    # Get data and change format
+    data<-NULL
+    data<- read.table(file(paste0(wd, var.info, ".txt")), header = F, stringsAsFactors=F)
+    colnames(data)<-c("CHROM", "SNP", "POS", "A1", "TEST", "NMISS", "BETA", "STAT", "PVALUE")
+    #data = data[sample(nrow(data), 100),] # for debugging
+    
+    data$CHROM[which(data$CHROM=="X")]<-23
+    data$CHROM<-as.numeric(data$CHROM)
+    data$POS<-as.numeric(data$POS)
+    data$PVALUE<-as.numeric(as.character(data$PVALUE))
+    data = data[data$PVALUE < 5e-8,]
+    #data = data[data$PVALUE < 0.01,] # debug
+#    head(data)
+    if(nrow(data)>0) {
+      data$pheno = paste(vnames)
+    }
+
+    return(data)
+
+}
+
+tables2 = mapply(get.dat,
+                 wd, name.vars.log, names.vars,
+                 SIMPLIFY=F)
+
+dat.models = tables2 %>% bind_rows() # unlist models to get consolidated data frame
+save(dat.models, file="sig-models.RData")
+
+kable(dat.models[c(10,1:9)],
+      caption="Variants meeting genome-wide significance level by phenotype.",
+      booktabs=T) %>%
+  collapse_rows(columns = 1) %>%
+  column_spec(1, width="8em") %>%
+  column_spec(2:10, width="5em") 
+
+```
+
+
+
+# Histograms of phenotypes
+
+```{r, results='hide', fig.keep='all'}
+# Look at distribution of phenotypes
+#wd = "W:/projects/carot_data/";
+wd = "~/projects/carot_data/"
+
+# from section1.Rmd at U:\projects\carotenoids\sections
+pheno = read.table(file = paste0(wd, "dat-pheno1.txt"), header=T)
+#head(pheno)
+
+names.vars = names(pheno[,3:ncol(pheno)])
+#names.vars
+
+# source: https://stackoverflow.com/questions/19134491/labels-for-histogram-when-using-lapply
+lapply(names.vars, FUN=function(s)
+  hist(pheno[, s], main=paste("Histogram of", s)))
+
+```
+
+# Information on values removed from analysis
+
+Note: the outliers for the Cryptoxanthin and Lutein and Zeaxanthin variables are as follows.
+
+```{r, echo=F}
+# Source: section1.Rmd on U drive at U:\projects\carotenoids\sections
+load(file='~/projects/carot_data/dat-remove.RData')
+```
+
+Cryptoxanthin values at or below the bottom 2.5% and the max value were removed.
+
+```{r, echo=F}
+remove.cryp
+```
+
+Lutein and Zeaxanthin values below the bottom 0.5% were removed.
+
+```{r, echo=F}
+remove.lutzea
+```
+
+
+# GWAS for inverse normal transformed variables -- using plink2 
+
+
+## Run plink2 for GWAS
+
+This output produces the alt/ref/a1 allele output needed for LocusZoom
+
+
+First, get allele freqs from non-cases so I can use them for cases. need to use minor allele from non-cases, not cases, which is different.
+<!-- source: https://www.cog-genomics.org/plink/2.0/assoc -->
+
+```{sh, eval=T}
+#!/bin/bash
+
+#SBATCH --partition=highmem
+#SBATCH --cpus-per-task=15
+#SBATCH --mail-user=ann.vonholle@nih.gov
+#SBATCH --mail-type=END, FAIL
+
+plink2 --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --snps rs6564851 \
+      --freq \
+      --out freqs.noncases      
+mv freqs.noncases.log logs/freqs.noncases.log
+```
+
+
+```{sh, eval=T}
+#!/bin/bash
+
+#SBATCH --partition=highmem
+#SBATCH --cpus-per-task=15
+#SBATCH --mail-user=ann.vonholle@nih.gov
+#SBATCH --mail-type=END, FAIL
+
+# adjlutzea
+plink2 --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --glm  hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name inv_adjlutzea \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --covar-variance-standardize \
+      --out p2.inv.lutzea.cont      
+mv p2.inv.lutzea.cont.log logs/p2.inv.lutzea.log
+
+# lutein
+plink2 --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --glm  hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name inv_adjlutein \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --covar-variance-standardize \
+      --out p2.inv.lutein.cont      
+mv p2.inv.lutein.cont.log logs/p2.inv.lutein.log
+
+# lutein
+plink2 --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --glm  hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name inv_adjzea \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --covar-variance-standardize \
+      --out p2.inv.zea.cont      
+mv p2.inv.zea.cont.log logs/p2.inv.zea.log
+
+#  beta carotene
+plink2 --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --glm  hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name inv_adjbetacarot  \
+      --covar ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --covar-variance-standardize \
+      --out p2.inv.betacarot.cont      
+mv p2.inv.betacarot.cont.log logs/p2.inv.betacarot.log
+
+```
+
+## Data handling for plink output files
+<!-- Fields: CHROM  POS     ID      REF     ALT     A1      TEST    OBS_CT  BETA    SE      T_STAT  P -->
+
+```{r,  results='hide', eval=T}
+
+# Manhattan plots and qq plots for transformed outcomes
+
+wd = "~/projects/carot/"
+
+name.vars.log = c('p2.inv.lutzea.cont.inv_adjlutzea.glm')
+
+# source: https://cran.r-project.org/web/packages/qqman/vignettes/qqman.html
+# function to make Manhattan plot
+make.mp2 = function(data){
+  manhattan(x = data, chr = "CHROM", bp = "POS", p = "PVALUE",
+            col = c("darkblue","lightblue"), 
+            annotatePval = 0.05,
+            suggestiveline = F,
+            chrlabs = c(1:22))
+}
+
+# function to make QQ plot including lambda
+make.qq = function(data){
+    alpha<-median(qchisq(1-data$PVALUE,1))/qchisq(0.5,1)
+    qq(data$PVALUE)
+    text(0.5,4, paste("lambda","=",  signif(alpha, digits = 3)) )
+}
+
+# do plots
+
+mapply(function(wd, var.info) {
+
+    # Get data and change format
+    data<-NULL
+    data<- read.table(file(paste0(wd, var.info, ".linear")), header = T, stringsAsFactors=F)
+    colnames(data)<-c("CHROM", "POS", "SNP", "REF", "ALT", "A1", "TEST", "OBS_CT", "BETA", "SE", "T_STAT", "PVALUE")
+    
+    data$CHROM[which(data$CHROM=="X")]<-23
+    data$CHROM<-as.numeric(data$CHROM)
+    data$POS<-as.numeric(data$POS)
+    data$PVALUE<-as.numeric(as.character(data$PVALUE))
+#    head(data)
+
+    # Manhattan plot  
+    png(filename = paste0(wd, "Manhattan.", var.info, ".png"),
+      width = 31, height = 21, units="cm", res=500, type="cairo")
+          print(make.mp2(data))
+    dev.off()
+    
+    # QQ plot
+   png(filename = paste0(wd,"QQ.", var.info,".png"), width = 31, height = 31, units="cm", res=500, type="cairo")
+     print(make.qq(data))
+   dev.off()
+
+    },
+    wd, name.vars.log)
+
+```
+
+
+## Lutzea
+
+
+![Manhattan plot](Manhattan.p2.inv.lutzea.cont.inv_adjlutzea.glm.png)
+
+
+![QQ plot](QQ.p2.inv.lutzea.cont.inv_adjlutzea.glm.png)
+
+
+# Table of rs6564851 variants for lutein and zeaxanthin phenotypes
+
+```{r, eval=T}
+# Look at table of values for the variants that exceed genome-wide significance
+# 
+name.vars.log = c('p2.inv.lutzea.cont.inv_adjlutzea.glm',
+                  'p2.inv.lutein.cont.inv_adjlutein.glm',
+                  'p2.inv.zea.cont.inv_adjzea.glm',
+                  'p2.inv.betacarot.cont.inv_adjbetacarot.glm')
+names.vars = c(
+               "Lutein and Zeaxanthin",
+               "Lutein",
+               "Zeaxanthin",
+               "Beta carotene"
+               )
+
+wd = "~/projects/carot/"
+
+
+# alternate way for tables of significant variants. 
+# append data sets and print off one table by phenotype
+
+get.dat = function(wd, var.info, vnames) {
+
+    # Get data and change format
+    data<-NULL
+    data<- read.table(file(paste0(wd, var.info, ".linear")), header = T, stringsAsFactors=F)
+    colnames(data)<-c("CHROM", "POS", "ID", "REF", "ALT", "A1", "TEST", "OBS_CT", "BETA", "SE", "T_STAT", "PVALUE")
+    #data = data[sample(nrow(data), 100),] # for debugging
+    
+    data$CHROM[which(data$CHROM=="X")]<-23
+    data$CHROM<-as.numeric(data$CHROM)
+    data$POS<-as.numeric(data$POS)
+    data$PVALUE<-as.numeric(as.character(data$PVALUE))
+    data$pheno = vnames
+    data$lci = with(data, BETA - 1.96*SE)
+    data$Uci = with(data, BETA + 1.96*SE)
+    data = data[data$ID == 'rs6564851',]
+    
+    if(nrow(data)>0) {
+      data$pheno = paste(vnames)
+    }
+
+    return(data)
+
+}
+
+tables2 = mapply(get.dat,
+                 wd, name.vars.log, names.vars,
+                 SIMPLIFY=F)
+
+dat.models = tables2 %>% bind_rows() # unlist models to get consolidated data frame
+save(dat.models, file="p2-sig-models.RData")
+
+kable(dat.models[c(1:15)],
+      caption="rs6564851 association tests.",
+      booktabs=T) %>%
+  collapse_rows(columns = 1) %>%
+  column_spec(1, width="8em") %>%
+  column_spec(2:15, width="6em") 
+
+```
+
+# Frequencies for significant variant
+
+```{sh}
+
+#!/bin/bash
+
+#SBATCH --partition=highmem
+#SBATCH --cpus-per-task=15
+#SBATCH --mail-user=ann.vonholle@nih.gov
+#SBATCH --mail-type=END, FAIL
+
+plink --bfile ~/projects/carot_data/dat/subsis1c8 -snps rs6564851    --freq counts
+plink --bfile ~/projects/carot_data/dat/subsis1c8 -snps rs6564851  --freqx
+
+# get contents of bim file for this variant
+cat ~/projects/carot_data/combo_8.bim | awk 'BEGIN {OFS="\t"} { if ($2 == "rs6564851") { print $0 }}' > outputFile.txt
+
+```
+
+## Values from .bim file for variant
+
+```{r}
+
+bim.info = read.table("../carot_data/outputFile.txt",  stringsAsFactors = F)
+bim.info
+
+```
+
+
+## Allele frequencies
+
+```{r, eval=T}
+frqs = read.table("plink.frq.counts", header = T, stringsAsFactors=F)
+colnames(frqs)<-c("CHROM", "RSID", "Minor allele", "Major allele", "freq, minor allele", "freq, major allele", 'missing')
+frqs
+
+```
+
+## Genotype frequencies
+
+```{r, eval=T}
+
+frqx = read.table("plink.frqx", header = T, sep='\t', stringsAsFactors=F)
+frqx
+
+```
+
+
+## Look at association values for all phenotypes for the significant SNP: rs6564851 
+
+```{r, eval=T}
+
+name.vars.log = c('inv.plot.alphacarot.cont.linear', 
+              'inv.plot.betacarot.cont.linear',
+              'inv.plot.lyc.cont.linear',
+              'inv.plot.cryp.cont.linear',
+              'inv.plot.lutzea.cont.linear',
+              'inv.plot.lutein.cont.linear',
+              'inv.plot.zea.cont.linear'
+              )
+
+names.vars = c("Alpha-carotene",
+               "Beta-carotene",
+               "Lycopene",
+               "Cryptoxanthin",
+               "Lutein and Zeaxanthin",
+               "Lutein",
+               "Zeaxanthin"
+               )
+
+wd = "~/projects/carot/"
+# wd = "W:/projects/carot/" # use this if running locally
+
+# alternate way for tables of significant variants. 
+# append data sets and print off one table by phenotype
+
+get.dat = function(wd, var.info, vnames) {
+
+    # Get data and change format
+    data<-NULL
+    data<- read.table(file(paste0(wd, var.info, ".txt")), header = F, stringsAsFactors=F)
+    colnames(data)<-c("CHROM", "SNP", "POS", "A1", "TEST",
+                      "NMISS", "BETA", "STAT", "PVALUE")
+    #data = data[sample(nrow(data), 100),] # for debugging
+    
+    data$CHROM[which(data$CHROM=="X")]<-23
+    data$CHROM<-as.numeric(data$CHROM)
+    data$POS<-as.numeric(data$POS)
+    data$PVALUE<-as.numeric(as.character(data$PVALUE))
+    data = data[data$SNP == 'rs6564851',]
+    
+    if(nrow(data)>0) {
+      data$pheno = paste(vnames)
+    }
+
+    return(data)
+
+}
+
+tables.check1 = mapply(get.dat,
+                 wd, name.vars.log, names.vars,
+                 SIMPLIFY=F)
+
+dat.models.check1 = tables.check1 %>% bind_rows() # unlist models to get consolidated data frame
+save(dat.models.check1, file="sigvar-models.RData")
+```
+
+```{r, eval=T}
+load(file="sigvar-models.RData")
+
+kable(dat.models.check1,
+      caption="Association tests for rs6564851",
+      booktabs=T) %>%
+  collapse_rows(columns = 1) %>%
+  column_spec(1, width="8em") %>%
+  column_spec(2:ncol(dat.models.check1), width="5em") 
+
+```
+
+## Look at phenotype values by variant genotypes
+
+
+
+First, get allele freqs from cases so I can use allele freqs from literature. need to use minor allele from cases, not non-cases, which is different.
+<!-- source: https://www.cog-genomics.org/plink/2.0/assoc -->
+
+```{sh, eval=T}
+#!/bin/bash
+
+#SBATCH --partition=highmem
+#SBATCH --cpus-per-task=15
+#SBATCH --mail-user=ann.vonholle@nih.gov
+#SBATCH --mail-type=END, FAIL
+
+plink2 --bfile ~/projects/carot_data/dat/casesis1c8 \
+      --snps rs6564851 \
+      --freq \
+      --out freqs.cases      
+mv freqs.cases.log logs/freqs.cases.log
+
+```
+
+```{r, eval=T}
+
+pheno.geno1 = read.table("onevar.raw", header = T, stringsAsFactors=F)
+head(pheno.geno1)
+
+pheno.geno2 = read.table("onevar.cov", header = T, stringsAsFactors=F,
+                         comment.char = " ")
+head(pheno.geno2)
+colnames(pheno.geno2)[1] = "IID"
+dim(pheno.geno1)
+dim(pheno.geno2)
+nrow(pheno.geno2[complete.cases(pheno.geno2),])
+
+pheno.geno = merge(pheno.geno1, 
+                   pheno.geno2,
+                   by="IID")
+
+# use quantile function in R to get quartiles (quantiles at 0, 25, 50 and 75)
+pheno.geno = pheno.geno %>%
+  mutate(q.lz = ntile(inv_adjlutzea, 4))
+
+# check
+table(pheno.geno$q.lz)
+
+```
+
+```{r, eval=T}
+
+# Median of Lutein/Zeaxanthine by quartile
+
+pheno.geno[complete.cases(pheno.geno),] %>%
+  group_by(q.lz) %>%
+  dplyr::summarize(median_lz = median(inv_adjlutzea),
+                   min_lz = min(inv_adjlutzea),
+                   max_lz = max(inv_adjlutzea)
+                   )
+```
+
+
+### Median Lutein/Zeaxanthin phenotype values by genotype
+
+```{r, eval=T}
+
+names(pheno.geno)
+
+# recode the genotype variable 
+levels(factor(pheno.geno$rs6564851_C))
+pheno.geno$rs6564851_C.f = factor(pheno.geno$rs6564851_C,
+                                  labels = c("AA", "AC", "CC"))
+
+pheno.geno.sub = pheno.geno %>% 
+  select(adjlutzea, adjlutein, adjzea, rs6564851_C.f)
+
+attr(pheno.geno.sub$adjlutein, "label") = "Lutein"
+attr(pheno.geno.sub$adjzea, "label") = "Zeanxanthine"
+attr(pheno.geno.sub$adjlutzea, "label") = "Lutein and Zeaxanthine"
+
+# source: https://www.danieldsjoberg.com/gtsummary/reference/tbl_summary.html
+t2 = tbl_summary(pheno.geno.sub,
+            by=rs6564851_C.f) %>%
+  add_n() %>%# add column with total number of non-missing observations
+ modify_spanning_header(all_stat_cols() ~ "**rs6564851 genotype**")
+
+t2
+
+# manually add p-values for additive tests
+tab.pvals = dat.models.check1[dat.models.check1$pheno %in% c("Lutein and Zeaxanthin",
+                                                 "Lutein",
+                                                 "Zeaxanthin"),
+                              c("SNP", "pheno", "BETA", "A1", "PVALUE")]
+
+kable(tab.pvals)
+
+# try https://www.danieldsjoberg.com/gtsummary/articles/rmarkdown.html
+
+
+# source: https://www.danieldsjoberg.com/gtsummary/reference/modify.html
+# source: https://www.danieldsjoberg.com/gtsummary/
+
+# save for tables-and-figures.Rmd file
+save(tab.pvals, pheno.geno.sub, file="pheno-table2.RData")
+
+```
+
+
+
+
+<!-- Source: https://gettinggeneticsdone.blogspot.com/2010/02/locuszoom-plot-regional-association.html -->
+<!-- Fields: CHROM  POS     ID      REF     ALT     A1      TEST    OBS_CT  BETA    SE      T_STAT  P -->
+
+```{sh}
+#!/bin/bash
+
+#SBATCH --partition=highmem
+#SBATCH --mail-user=ann.vonholle@nih.gov
+#SBATCH --mail-type=END, FAIL
+
+cat p2.inv.lutzea.cont.inv_adjlutzea.glm.linear | sed -r 's/^\s+//g' | sed -r 's/\s+/\t/g' > p2.inv.lutzea.cont.inv_adjlutzea.glm.linear.tab.txt
+
+gzip -c p2.inv.lutzea.cont.inv_adjlutzea.glm.linear.tab.txt > p2.lutzea.assoc.gz
+
+```
+
+
+
+# Change allele freqs per manuscript revisions -- GWAS for inverse normal transformed variables
+
+## Run plink2 for GWAS-- using plink2 for rs6564851 only
+
+
+```{sh, eval=T}
+#!/bin/bash
+
+#SBATCH --partition=highmem
+#SBATCH --cpus-per-task=15
+#SBATCH --mail-user=ann.vonholle@nih.gov
+#SBATCH --mail-type=END, FAIL
+
+# adjlutzea
+plink2 --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --snps rs6564851 rs6420424	\
+      --read-freq freqs.cases.afreq \
+      --glm  hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name inv_adjlutzea \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --covar-variance-standardize \
+      --out p2.inv.lutzea.cont2      
+mv p2.inv.lutzea.cont2.log logs/p2.inv.lutzea2.log
+
+# lutein
+plink2 --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --snps rs6564851 rs6420424	\
+      --read-freq freqs.cases.afreq \
+      --glm  hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name inv_adjlutein \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --covar-variance-standardize \
+      --out p2.inv.lutein.cont2   
+mv p2.inv.lutein.cont2.log logs/p2.inv.lutein2.log
+
+# lutein
+plink2 --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --snps rs6564851 rs6420424	\
+      --read-freq freqs.cases.afreq \
+      --glm  hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name inv_adjzea \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --covar-variance-standardize \
+      --out p2.inv.zea.cont2      
+mv p2.inv.zea.cont2.log logs/p2.inv.zea2.log
+
+#  beta carotene
+plink2 --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --glm  hide-covar \
+      --snps rs6564851 rs6420424	\
+      --read-freq freqs.cases.afreq \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name inv_adjbetacarot  \
+      --covar ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --covar-variance-standardize \
+      --out p2.inv.betacarot.cont2      
+mv p2.inv.betacarot.cont2.log logs/p2.inv.betacarot2.log
+
+```
+
+
+
+## Data handling for plink output files
+<!-- Fields: CHROM  POS     ID      REF     ALT     A1      TEST    OBS_CT  BETA    SE      T_STAT  P -->
+
+```{r, eval=T}
+# Look at table of values for the variants that exceed genome-wide significance
+# 
+
+name.vars.log = c('p2.inv.lutzea.cont2.inv_adjlutzea.glm',
+                  'p2.inv.lutein.cont2.inv_adjlutein.glm',
+                  'p2.inv.zea.cont2.inv_adjzea.glm',
+                  'p2.inv.betacarot.cont2.inv_adjbetacarot.glm')
+names.vars = c(
+               "Lutein and Zeaxanthin",
+               "Lutein",
+               "Zeaxanthin",
+               "Beta carotene"
+               )
+
+
+wd = "~/projects/carot/"
+# wd = "W:/projects/carot/" # this is if I am running the script on the local drive
+
+# alternate way for tables of significant variants. 
+# append data sets and print off one table by phenotype
+
+get.dat = function(wd, var.info, vnames) {
+
+    # Get data and change format
+    # var.info = 'p2.inv.lutzea.case.cont.inv_adjlutzea.glm' # debug
+    data<-NULL
+    data <- read.table(file(paste0(wd, var.info, ".linear")), header = F, stringsAsFactors=F) # there is only one value so make header=F?
+    colnames(data) <- c("CHROM", "POS", "ID", "REF", "ALT", "A1", "TEST", "OBS_CT", "BETA", "SE", "T_STAT", "PVALUE")
+    #data = data[sample(nrow(data), 100),] # for debugging
+    
+    data$CHROM[which(data$CHROM=="X")]<-23
+    data$CHROM<-as.numeric(data$CHROM)
+    data$POS<-as.numeric(data$POS)
+    data$PVALUE<-as.numeric(as.character(data$PVALUE))
+
+    if(nrow(data)>0) {
+      data$pheno = paste(vnames)
+    }
+
+    return(data)
+
+}
+
+tables22 = mapply(get.dat,
+                 wd, name.vars.log, names.vars,
+                 SIMPLIFY=F)
+
+dat.models2 = tables22 %>% bind_rows() # unlist models to get consolidated data frame
+save(dat.models2, file="p2-sig-models2.RData")
+
+
+load(file="p2-sig-models2.RData")
+dat.models2
+
+#setwd("W:/projects/carot/")
+freqs = read.table("freqs.cases.afreq")
+
+kable(freqs,
+      col.names=c('CHROM',	'ID',	'REF',	'ALT',	'ALT_FREQS',	'OBS_CT'),
+      caption="freqs for minor allele set used for cases (from cases)")
+
+kable(dat.models2,
+      caption="Association for rs6564851 variant from primary sample.",
+      booktabs=T) %>%
+  collapse_rows(columns = 1) %>%
+  column_spec(1, width="8em") %>%
+  column_spec(2:13, width="6em") 
+
+```
+
+

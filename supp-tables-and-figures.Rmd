@@ -1,0 +1,544 @@
+---
+title: "Supplemental tables and figures"
+description: Summary of analyses
+output:
+  pdf_document:
+    includes:
+      in_header: preamble-latex-nobookdown.tex
+  html_document:
+    df_print: paged
+  word_document: default
+fig_caption: yes
+language:
+  label:
+    fig: Figure S
+linkcolor: blue
+citecolor: blue
+always_allow_html: yes
+urlcolor: blue
+geometry: margin=1cm
+link-citations: yes
+---
+
+
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = F, 
+                      eval = T, 
+                      out.width="70%",
+                      fig.width=6,
+                      fig.height=6,
+                      fig.cap=T,
+                      message=F,
+                      float=F,
+                      fig.pos="H",
+                      results = 'markup', # hide all results
+                      warning = F)
+
+```
+
+```{r, eval=F, include=F}
+# NOTE: include this in yaml if you want a html with labeled figures
+#output:
+#  bookdown::html_document2:
+#  df_print: paged
+#  toc: TRUE
+#  toc_depth: 3
+#  fig_caption: TRUE
+```
+
+
+```{r, include=F, eval=T}
+require(knitr)
+require(kableExtra)
+require(stargazer) 
+require(nlme)
+require(tidyr)
+require(ggplot2)
+require(gtsummary) # this table making package works better with haven objects
+require(stringr)
+
+
+require(corrplot)
+require(Hmisc)
+require(flextable)
+
+```
+
+<!-- NOTE: All files run on Wine server with submit1.sh shell script. This shell script runs run-plink-handle-clean.R, which renders each .Rmd file in the order in which they should be run for data cleaning and analyses. -->
+
+
+<!-- Source: https://stackoverflow.com/questions/13848137/figure-captions-references-using-knitr-and-markdown-to-html -->
+
+<!-- NOTE: figures from assoc1.Rmd -->
+
+
+
+<div id="refs"></div>
+
+\beginsupplement
+
+
+
+\clearpage
+\newpage
+
+```{r}
+
+# source: W:\projects\carot\assoc1.Rmd
+
+load(file="pheno-table2.RData") # tab.pvals, pheno.geno.sub, pheno.geno.sub.2
+#load(file="p2-sig-models.RData") # dat.models
+load(file="p2-sig-models2.RData") # dat.models2
+
+load(file="posthoc-recessive.RData") # dat.models2.rec from posthoc-ldcheck.Rmd
+
+
+# source: https://www.danieldsjoberg.com/gtsummary/reference/tbl_summary.html
+t2 = tbl_summary(pheno.geno.sub,
+            by=rs6564851_C.f) %>%
+  add_n() %>% # add column with total number of non-missing observations
+ modify_spanning_header(all_stat_cols() ~ "rs6564851 genotype") %>%
+  modify_caption("Carotenoid characteristics by rs6564851 genotype") %>%
+  as_kable_extra(booktabs = TRUE,linesep = "")
+
+t2
+
+```
+
+\clearpage
+\newpage
+
+
+```{r}
+
+# source: https://www.danieldsjoberg.com/gtsummary/reference/tbl_summary.html
+t2.2 = tbl_summary(pheno.geno.sub.2,
+            by=rs6420424_A.f) %>%
+  add_n() %>% # add column with total number of non-missing observations
+ modify_spanning_header(all_stat_cols() ~ "rs6420424 genotype") %>%
+  modify_caption("Carotenoid characteristics by rs6420424 genotype") %>%
+  as_kable_extra(booktabs = TRUE,linesep = "")
+
+t2.2
+```
+
+```{r, eval=F, include=F}
+
+kable(dat.models2[c(1:10)],
+      caption="rs6564851 association tests for lutein and zeaxanthin.",
+      booktabs=T) %>%
+  collapse_rows(columns = 1) %>%
+  column_spec(1, width="8em") %>%
+  column_spec(2:10, width="5em") 
+
+```
+
+
+```{r, include=F}
+
+# source: W:\projects\carot\assoc1-cases.Rmd
+
+load(file="p2-sig-models-case.RData") # dat.models.case
+
+```
+
+\clearpage
+\newpage
+
+
+```{r, eval=T}
+
+dat.models2$PVALUE = as.character(dat.models2$PVALUE)# change p-value so scientific notation shows up in kableextra
+
+dat.models2.rec$PVALUE = as.character(dat.models2.rec$PVALUE)# change p-value so scientific notation shows up in kableextra
+
+#head(dat.models2.rec)
+
+# revise table per CRW comment (below) from 5/2023: 4 columns do not change across rows so put those descriptors in the title and just have phenotype and the 3 right-most columns.
+
+# comment: 4 columns do not change across rows so put those descriptors in the title and just have phenotype and the 3 right-most columns.
+
+
+kable(dat.models2.rec[c("pheno", "BETA", "SE", "PVALUE")], # "CHROM", "POS", "ID", "A1", 
+      booktabs=T,
+      row.names = F,
+      col.names = c("Carotenoid",  "Beta", "SE", "p-value"),
+      caption="Recessive association tests for rs6564851, chromosome 16, position 81264597, index allele C.",
+      digits=3) %>%
+  column_spec(1, width="10em") %>%
+  column_spec(2:3, width="5em") %>%
+  column_spec(4, width="10em") %>%
+  kable_styling(full_width = F, position = "left")
+
+```
+
+
+```{r, eval=T}
+
+#dat.models.case$PVALUE = as.character(dat.models.case$PVALUE)# change p-value so scientific notation shows up in kableextra
+
+#head(dat.models2.rec)
+dat.models.case = dat.models.case[order(dat.models.case$ID),]
+
+kable(dat.models.case[c("pheno", "CHROM", "POS", "A1", "BETA", "SE", "PVALUE")],
+      booktabs=T,
+      row.names = F,
+      col.names = c("Carotenoid", "Chromosome", "Position", "Index allele", "Beta", "SE", "p-value"),
+      caption="Association tests for rs6564851 and lutein and zeaxanthin in case-only sample",
+      digits=3) %>%
+  pack_rows(index = table(dat.models.case$ID)) %>% 
+#  column_spec(1, width="8em") %>%
+#  column_spec(2:8, width="5em") %>%
+  kable_styling(full_width = F, position = "left")
+
+
+
+
+```
+
+\clearpage
+\newpage
+
+\blandscape
+
+
+```{r, fig.cap="Correlation heat map of five primary carotenoids"}
+
+# correlation heatmap plot from U:\projects\carotenoids\sections\table1.Rmd
+
+load(file="U:/projects/carotenoids/sections/table1.RData") # Mp from U:\projects\carotenoids\sections\table1.Rmd
+
+corrplot(Mp$r, method="color", addCoef.col="black",
+         diag = FALSE, type = 'upper',
+         tl.col='black')
+```
+
+
+
+
+```{r, fig.cap="Boxplot of Lutein and Zeaxanthin by rs6564851 genotype"}
+
+
+# source: W:\projects\carot\assoc1.Rmd
+
+load(file="pheno-table2.RData") # tab.pvals, pheno.geno.sub
+
+# wide to long for plot
+# dat.long = gather(pheno.geno.sub,
+#                   pheno,
+#                   value,
+#                   adjlutzea, adjlutein, adjzea)
+# head(dat.long)
+# make box and whisker plot by genotype
+
+ggplot(data = pheno.geno.sub[which(pheno.geno.sub$adjlutzea>0),], # there is one person with a negative lutzea value, they are -9. remove.
+        aes(x=rs6564851_C.f, y=adjlutzea)) +
+  geom_boxplot() +
+  # scale_y_continuous(
+  #   trans = "log10"
+  # ) +
+  theme_bw(base_size=15) +
+  labs(y="Adjusted lutein and zeaxanthine (mcg/mL)",
+       x="Genotype, rs6564851")
+
+
+```
+
+```{r, include=F}
+ggsave(file="geno-box.png", width = 6, height = 6, dpi=300)
+```
+
+
+<!-- NOTE: the figure below is from https://my.locuszoom.org/gwas/450584/region/?chrom=16&start=81014597&end=81514597 -->
+<!-- Data from the p2.inv.lutzea.cont file made in assoc1.Rmd -->
+
+```{r, fig.cap = "Regional association plot for variants rs6564851 and rs6420424"}
+#knitr::include_graphics("locuszoom20221130.png")
+
+knitr::include_graphics("locuszoom-20231218-update.png")
+
+```
+
+
+
+\clearpage
+\newpage
+
+<!-- # Alpha-carotene -->
+
+```{r, fig.cap="Manhattan plot for alpha carotene, primary sample"}
+knitr::include_graphics("Manhattan.inv.plot.alphacarot.cont.linear.png")
+```
+
+
+<!-- # Beta-carotene -->
+
+
+```{r, fig.cap="Manhattan plot for beta-carotene, primary sample"}
+knitr::include_graphics("Manhattan.inv.plot.betacarot.cont.linear.png")
+```
+
+
+\clearpage
+\newpage
+
+<!-- # Lycopene -->
+
+
+```{r, fig.cap="Manhattan plot for lycopene, primary sample"}
+knitr::include_graphics("Manhattan.inv.plot.lyc.cont.linear.png")
+```
+
+
+\clearpage
+\newpage
+
+
+<!-- # Cryptoxanthin -->
+
+```{r, fig.cap="Manhattan plot for cryptoxanthin, primary sample"}
+knitr::include_graphics("Manhattan.inv.plot.cryp.cont.linear.png")
+```
+
+
+\clearpage
+\newpage
+
+<!-- # Lutein -->
+
+
+```{r, fig.cap="Manhattan plot for Lutein, primary sample"}
+knitr::include_graphics("Manhattan.inv.plot.lutein.cont.linear.png")
+```
+
+
+\clearpage
+\newpage
+
+<!-- # Zeanxanthin -->
+
+```{r, fig.cap="Manhattan plot for Zeaxanthin, primary sample"}
+knitr::include_graphics("Manhattan.inv.plot.zea.cont.linear.png")
+```
+
+
+\clearpage
+\newpage
+
+<!-- # Alpha-carotene -->
+
+
+```{r, fig.cap="QQ plot for alpha carotene, primary sample"}
+knitr::include_graphics("QQ.inv.plot.alphacarot.cont.linear.png")
+```
+
+
+\clearpage
+\newpage
+
+<!-- # Beta-carotene -->
+
+
+```{r, fig.cap="QQ plot for beta-carotene, primary sample"}
+knitr::include_graphics("QQ.inv.plot.betacarot.cont.linear.png")
+```
+
+
+\clearpage
+\newpage
+
+<!-- # Lycopene -->
+
+
+
+```{r, fig.cap="QQ plot for lycopene, primary sample"}
+knitr::include_graphics("QQ.inv.plot.lyc.cont.linear.png")
+```
+
+
+\clearpage
+\newpage
+
+<!-- # Cryptoxanthin -->
+
+
+```{r, fig.cap="QQ plot for cryptoxanthin, primary sample"}
+knitr::include_graphics("QQ.inv.plot.cryp.cont.linear.png")
+```
+
+
+\clearpage
+\newpage
+
+<!-- # Lutein -->
+
+
+
+```{r, fig.cap="QQ plot for Lutein, primary sample"}
+knitr::include_graphics("QQ.inv.plot.lutein.cont.linear.png")
+```
+
+
+\clearpage
+\newpage
+
+<!-- # Zeanxanthin -->
+
+
+```{r, fig.cap="QQ plot for Zeaxanthin, primary sample"}
+knitr::include_graphics("QQ.inv.plot.zea.cont.linear.png")
+```
+
+
+\clearpage
+\newpage
+
+<!-- NOTE: figures from assoc1-cases.Rmd -->
+
+<!-- # Alpha-carotene -->
+
+<!-- ```{r, fig.cap="Manhattan plot for alpha carotene phenotype, replication sample"} -->
+<!-- knitr::include_graphics("Manhattan.inv.plot.alphacarot.case.cont.linear.png") -->
+<!-- ``` -->
+
+
+<!-- \clearpage -->
+<!-- \newpage -->
+
+<!-- <!-- # Beta-carotene --> 
+
+
+<!-- ```{r, fig.cap="Manhattan plot for beta-carotene phenotype, replication sample"} -->
+<!-- knitr::include_graphics("Manhattan.inv.plot.betacarot.case.cont.linear.png") -->
+<!-- ``` -->
+
+
+<!-- \clearpage -->
+<!-- \newpage -->
+
+<!-- <!-- # Lycopene --> 
+
+
+<!-- ```{r, fig.cap="Manhattan plot for lycopene phenotype, replication sample"} -->
+<!-- knitr::include_graphics("Manhattan.inv.plot.lyc.case.cont.linear.png") -->
+<!-- ``` -->
+
+
+<!-- \clearpage -->
+<!-- \newpage -->
+
+<!-- <!-- # Cryptoxanthin --> 
+
+<!-- ```{r, fig.cap="Manhattan plot for cryptoxanthin henotype, replication sample"} -->
+<!-- knitr::include_graphics("Manhattan.inv.plot.cryp.case.cont.linear.png") -->
+<!-- ``` -->
+
+
+<!-- \clearpage -->
+<!-- \newpage -->
+
+<!-- <!-- # Lutein and Zeaxanthin --> 
+
+
+<!-- ```{r, fig.cap="Manhattan plot for Lutein and Zeaxanthin phenotype, replication sample"} -->
+<!-- knitr::include_graphics("Manhattan.inv.plot.lutzea.case.cont.linear.png") -->
+<!-- ``` -->
+
+
+<!-- \clearpage -->
+<!-- \newpage -->
+
+<!-- <!-- # Lutein --> 
+
+<!-- ```{r, fig.cap="Manhattan plot for Lutein  phenotype, replication sample"} -->
+<!-- knitr::include_graphics("Manhattan.inv.plot.lutein.case.cont.linear.png") -->
+<!-- ``` -->
+
+
+
+<!-- \clearpage -->
+<!-- \newpage -->
+
+<!-- <!-- # Zeanxanthin --> 
+
+<!-- ```{r, fig.cap="Manhattan plot for Zeaxanthin phenotype, replication sample"} -->
+<!-- knitr::include_graphics("Manhattan.inv.plot.zea.case.cont.linear.png") -->
+<!-- ``` -->
+
+
+<!-- \clearpage -->
+<!-- \newpage -->
+
+<!-- <!-- # Alpha-carotene --> 
+
+
+<!-- ```{r, fig.cap="QQ plot for alpha carotene phenotype, replication sample"} -->
+<!-- knitr::include_graphics("QQ.inv.plot.alphacarot.case.cont.linear.png") -->
+<!-- ``` -->
+
+
+<!-- \clearpage -->
+<!-- \newpage -->
+
+<!-- <!-- # Beta-carotene --> 
+
+
+<!-- ```{r, fig.cap="QQ plot for beta-carotene phenotype"} -->
+<!-- knitr::include_graphics("QQ.inv.plot.betacarot.case.cont.linear.png") -->
+<!-- ``` -->
+
+
+<!-- \clearpage -->
+<!-- \newpage -->
+
+<!-- <!-- # Lycopene --> 
+
+
+<!-- ```{r, fig.cap="QQ plot for lycopene phenotype, replication sample"} -->
+<!-- knitr::include_graphics("QQ.inv.plot.lyc.case.cont.linear.png") -->
+<!-- ``` -->
+
+
+<!-- \clearpage -->
+<!-- \newpage -->
+
+<!-- <!-- # Cryptoxanthin --> 
+
+<!-- ```{r, fig.cap="QQ plot for cryptoxanthin phenotype, replication sample"} -->
+<!-- knitr::include_graphics("QQ.inv.plot.cryp.case.cont.linear.png") -->
+<!-- ``` -->
+
+
+<!-- \clearpage -->
+<!-- \newpage -->
+
+<!-- <!-- # Lutein and Zeaxanthin --> 
+
+
+<!-- ```{r, fig.cap="QQ plot for Lutein and Zeaxanthin phenotype, replication sample"} -->
+<!-- knitr::include_graphics("QQ.inv.plot.lutzea.case.cont.linear.png") -->
+<!-- ``` -->
+
+
+<!-- \clearpage -->
+<!-- \newpage -->
+
+<!-- <!-- # Lutein --> 
+
+
+<!-- ```{r, fig.cap="QQ plot for Lutein phenotype, replication sample"} -->
+<!-- knitr::include_graphics("QQ.inv.plot.lutein.case.cont.linear.png") -->
+<!-- ``` -->
+
+<!-- \clearpage -->
+<!-- \newpage -->
+
+<!-- <!-- # Zeanxanthin -->
+
+
+<!-- ```{r, fig.cap="QQ plot for Zeaxanthin phenotype, replication sample"} -->
+<!-- knitr::include_graphics("QQ.inv.plot.zea.case.cont.linear.png") -->
+<!-- ``` -->
+
+\elandscape

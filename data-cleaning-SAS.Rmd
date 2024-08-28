@@ -1,0 +1,1942 @@
+---
+title: "SAS data cleaning and batch correction"
+output:
+  html_document: default
+  pdf_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE}
+saspath <- 'C:/Program Files/SASHome/SASFoundation/9.4/sas.exe'
+sasopts <- "-nosplash -log 'c:\\temp'  -ls 80 -ps 60  -nocenter -nodate" # see http://bit.ly/1QB4ZTb
+```
+
+
+```{r s-read1, engine='sas', engine.path=saspath, engine.opts=sasopts, results='markup', echo=TRUE, message=F, warning=FALSE, eval=T}
+
+* SAS data file source: Carot_1.sas from Katie 2021;
+* Source: U:\projects\Sister Study\formats\Create the Sister Study format catalog on your system.doc;
+
+
+LIBNAME library “U:\projects\Sister Study\formats”;
+OPTIONS NOFMTERR nonotes FMTSEARCH=(library.sisformats);
+
+
+
+libname carot "U:\projects\Sister Study\data\Req00139\dr00139_16_01";
+libname cdat "U:\projects\carotenoids\data";
+
+
+data a;
+set carot.dr00139_16_01;
+
+
+rename Craft_a_Carotene_Corr = alphacarot_p;
+rename Craft_c_B_Carotene_Corr = c_betacarot_p;
+rename Craft_t_B_Carotene_Corr = t_betacarot_p; 
+rename Craft_c_Lycopene_Corr = clyc_p;
+rename Craft_t_Lycopene_Corr = tlyc_p;
+rename Craft_a_Cryptoxanthin_Corr = a_cryp_p;
+rename Craft_B_Cryptoxanthin_Corr = b_cryp_p;
+rename Craft_Lutein_Corr = lutein_p;
+rename Craft_Zeaxanthin_Corr = zea_p;
+
+
+rename Craft_Retinol_Corr = retinol_p;
+rename Craft_a_Tocopherol_Corr = a_tocoph_p;
+rename Craft_g_Tocopherol_Corr = g_tocoph_p;
+
+
+rename na_all_dt_acar = alphacarot;
+rename na_all_dt_bcar = betacarot;
+rename na_all_dt_lutzea = lutzea;
+rename na_all_dt_cryp = cryp;
+rename na_all_dt_lyc = lyc;
+rename na_all_sd_vite_aTE=a_tocoph;
+rename na_all_dt_gammatoc=g_tocoph;
+rename na_all_sd_vita_RAE=retinol;
+
+
+rename na_sup_bcar =supbcar;
+
+rename na_all_kcal = calorie;
+
+run;
+
+
+data PreANA; set a;
+
+/************************************************************************************/
+/*       Create diet Variable                                */
+/************************************************************************************/
+
+totcarot = sum(alphacarot, betacarot, lutzea, cryp, lyc);
+
+betacarot_p = sum(c_betacarot_p, t_betacarot_p);
+lyc_p = sum(clyc_p, tlyc_p);
+cryp_p = sum(a_cryp_p, b_cryp_p);
+lutzea_p = sum(lutein_p, zea_p);
+
+betacarot_p_NC = sum(c_B_Carotene_NotCorrected_Craft, t_B_Carotene_NotCorrected_Craft);
+
+totcarot_P = sum(alphacarot_p, betacarot_p, lyc_p, b_cryp_p, lutzea_p);
+logtotcarot_P = log(totcarot_P);
+
+tocoph_p = sum (a_tocoph_p, g_tocoph_p);
+tocoph = sum (a_tocoph, g_tocoph);
+run;
+
+data cdat.ana; set PreANA; run;
+
+
+```
+
+
+<!-- NOTE: this code (and creates the files) works but for some reason the file doesn't compile into a pdf. The images? -->
+
+```{r s-read2,engine='sas', engine.path=saspath, engine.opts=sasopts, results='markup', echo=TRUE, message=F, warning=FALSE, eval=T}
+
+* SAS data file source: Carot_2.sas from Katie 2021;
+
+libname cdat "U:\projects\carotenoids\data";
+
+LIBNAME library "U:\projects\Sister Study\formats";
+OPTIONS NOFMTERR  nonotes FMTSEARCH=(library.sisformats);
+
+data ODS_all; set cdat.ana;
+
+if SIS370_Sample_GrpA=1 or
+SIS370_Sample_GrpB=1 or
+SIS370_Sample_GrpC=1 or
+SIS370_Sample_GrpD=1; 
+
+Crea=Creatinine_Vanderbilt;
+total=totcarot;
+run;
+
+/*
+Sample_GrpA	Group A: all er-neg brca cases who were post-meno at baseline from full cohort in DR6
+Sample_GrpB	Group B: random sample of er-pos brca cases who are post-meno at baseline from full cohort in DR6 - sample until N is = to N for group A above(N=262)
+Sample_GrpC	Group C: Random 4 percent Subcohort - random sample post-meno until N=N in group A + N in group B(N=524)
+Sample_GrpD	Group D: Random 4 percent Subcohort - random sample N=50 w/high beta-carotene intake-14 mg/day diet+suppl (narv_sd0_bcar>14000) or 6 mg/day of suppl (na_sup_bcar>6000)
+*/
+
+
+
+***************************************************;
+*totcarot*
+***************************************************;
+
+*Calculate per batch CV;
+PROC MEANS data=ODS_all;
+	CLASS batch;
+	VAR totcarot_P;
+	ODS OUTPUT Summary=BatchCVs;
+RUN;
+
+DATA BatchCVs;
+	SET BatchCVs;
+	CV=totcarot_P_StdDev/totcarot_P_Mean;
+RUN;
+
+PROC PRINT data=BatchCVs;
+RUN;
+
+*looking to make sure that no batch jumps out as being extremely bad;
+PROC MEANS data=BatchCVs;
+	VAR CV;
+RUN;
+
+
+* NOTE: need to use following code for images or the .Rmd file will not compile;
+
+*ods listing gpath="&dir";
+*ods graphics/reset imagename="Weighted_curves" imagefmt=jpeg height=8in width=8in;
+* then put following code below chunk. ![](c:\temp\Weighted_curves.jpeg);
+  
+*check to make sure there is not a batch trend;
+
+  PROC SGPLOT data=ODS_all;
+  scatter x=batch y=totcarot_P;
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+
+*add loess smoother - just to help visualize;
+
+  PROC SGPLOT data=ODS_all;
+  scatter x=batch y=totcarot_P;
+  loess x=batch y=totcarot_P;
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+
+
+*make plot with batch-specific means;
+PROC MEANS data=ODS_all;
+	CLASS BATCH;
+	VAR totcarot_P;
+	ODS OUTPUT Summary=batchmeans;
+RUN;
+
+DATA batchmeans;
+	SET batchmeans;
+	Batch_mean_totcarot=totcarot_P_Mean;
+	KEEP Batch Batch_mean_totcarot;
+RUN;
+
+*merge with data;
+PROC SORT data=ODS_all;
+	BY Batch;
+RUN;
+
+DATA ODS_totcarot;
+	MERGE ODS_all batchmeans;
+	BY Batch;
+RUN;  
+
+
+*plot all data by batch with line for batch means;
+ 
+  PROC SGPLOT data=ODS_totcarot;
+  scatter x=batch y=totcarot_P;
+  series x=batch y=Batch_mean_totcarot / MARKERS LINEATTRS = (THICKNESS =2 COLOR=RED);
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+ 
+  
+*now do batch adjustment and replot;
+
+*adjust for batch using random effects model;
+PROC SORT data=ODS_totcarot; 	BY BATCH; RUN;
+  
+
+
+*parms have to be specified but should not matter that much. just a starting place for model estimation;
+
+*NOTE: there is an error with original nlmixed statement;
+*WARNING: The final Hessian matrix is full rank but has at least one negative ;
+*         eigenvalue. Second-order optimality condition violated.;
+
+* tip to rescale variable. source: http://support.sas.com/resources/papers/proceedings12/332-2012.pdf;
+* below "Use a standard deviation rather than the variance".;
+
+
+*totcarot*;
+ods select ParameterEstimates;
+PROC NLMIXED DATA = ODS_totcarot;
+	PARMS b0=1.5 bvar=1 avar=0.1; 
+		eta = b0 + a; 
+	MODEL totcarot_P ~ normal(eta,bvar); 
+	RANDOM a ~ normal(0,avar*avar) subject=batch OUT=outest; 
+RUN; quit;
+
+
+*keep batch adjustment term (a) and batch number only;
+DATA outest;
+	SET outest;
+	BatchEffect=Estimate;
+	KEEP Batch BatchEffect;
+RUN;
+*merge with dataset (which is already sorted by batch);
+DATA ODS_totcarot;
+	MERGE ODS_totcarot outest;
+	BY Batch;
+	batchadj_totcarot=totcarot_P-BatchEffect;
+RUN;
+
+*run means on old and new values.;
+PROC MEANS data=ODS_totcarot;
+	CLASS batch;
+	VAR totcarot_P batchadj_totcarot;
+RUN;
+
+PROC MEANS data=ODS_totcarot;
+	VAR totcarot_P batchadj_totcarot;
+RUN;
+*adjusted totcarot_P has slightly lower variance than the original estimates;
+
+*save new means so that can make plot with batch-specific means;
+PROC MEANS data=ODS_totcarot;
+	CLASS BATCH;
+	VAR batchadj_totcarot;
+	ODS OUTPUT Summary=newbatchmeans;
+RUN;
+
+DATA newbatchmeans;
+	SET newbatchmeans;
+	Batch_mean_totcarot=batchadj_totcarot_Mean;
+	KEEP Batch Batch_mean_totcarot;
+RUN;
+
+*merge with data;
+DATA ODS_totcarot;
+	MERGE ODS_totcarot batchmeans;
+	BY Batch;
+RUN;
+
+ 
+PROC SGPLOT data=ODS_totcarot;
+  scatter x=batch y=batchadj_totcarot;
+  series x=batch y=Batch_mean_totcarot / MARKERS LINEATTRS = (THICKNESS =2 COLOR=RED);
+  TITLE "Total carotenoids by batch, all samples";
+ 	YAXIS label="carotenoids" min=0 max=125 values=(0 25 50 75 100 125);
+	XAXIS label="Batch Number";
+run;
+ 
+
+*adjusted for seasonal variation*;
+ods graphics on;
+PROC LOESS DATA = ODS_totcarot;
+ MODEL batchadj_totcarot = Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+ ODS OUTPUT OutputStatistics = OutStats;
+RUN;
+DATA OutStats;
+	SET OutStats;
+	loess_pred=Pred;
+	KEEP Blood_Draw_WeekOfYear loess_pred /* regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+PROC SORT data=OutStats;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+PROC SORT data=ODS_totcarot;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+DATA ODS_totcarot_adj;
+	MERGE ODS_totcarot Outstats;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+	resid_totcarot=batchadj_totcarot-loess_pred;
+	adjtotcarot=resid_totcarot+Batch_mean_totcarot; 
+	keep PSID adjtotcarot; 
+RUN;
+
+
+***************************************************;
+*alphacarot*;
+***************************************************;
+
+*Calculate per batch CV;
+PROC MEANS data=ODS_all;
+	CLASS batch;
+	VAR alphacarot_P;
+	ODS OUTPUT Summary=BatchCVs;
+RUN;
+
+DATA BatchCVs;
+	SET BatchCVs;
+	CV=alphacarot_P_StdDev/alphacarot_P_Mean;
+RUN;
+
+PROC PRINT data=BatchCVs;
+RUN;
+
+*looking to make sure that no batch jumps out as being extremely bad;
+PROC MEANS data=BatchCVs;
+	VAR CV;
+RUN;
+
+ 
+*check to make sure there is not a batch trend;
+PROC SGPLOT data=ODS_all;
+  scatter x=batch y=alphacarot_P;
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+
+*add loess smoother - just to help visualize;
+PROC SGPLOT data=ODS_all;
+  scatter x=batch y=alphacarot_P;
+  loess x=batch y=alphacarot_P;
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+ 
+  
+*make plot with batch-specific means;
+PROC MEANS data=ODS_all;
+	CLASS BATCH;
+	VAR alphacarot_P;
+	ODS OUTPUT Summary=batchmeans;
+RUN;
+
+DATA batchmeans;
+	SET batchmeans;
+	Batch_mean_alphacarot=alphacarot_P_Mean;
+	KEEP Batch Batch_mean_alphacarot;
+RUN;
+
+*merge with data;
+PROC SORT data=ODS_all;
+	BY Batch;
+RUN;
+
+DATA ODS_alphacarot;
+	MERGE ODS_all batchmeans;
+	BY Batch;
+RUN;
+
+*plot all data by batch with line for batch means;
+ 
+  PROC SGPLOT data=ODS_alphacarot;
+  scatter x=batch y=alphacarot_P;
+  series x=batch y=Batch_mean_alphacarot / MARKERS LINEATTRS = (THICKNESS =2 COLOR=RED);
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+ 
+*now do batch adjustment and replot;
+
+*adjust for batch using random effects model;
+PROC SORT data=ODS_alphacarot; 	BY BATCH; RUN;
+
+*parms have to be specified but should not matter that much - just a starting place for model estimation;
+
+*alphacarot*;
+PROC NLMIXED DATA = ODS_alphacarot; 
+	PARMS b0=1.5 bvar=1 avar=0.1; 
+		eta = b0 + a; 
+	MODEL alphacarot_P ~ normal(eta,bvar); 
+	RANDOM a ~ normal(0,avar) subject=batch OUT=outest; 
+RUN;
+*keep batch adjustment term (a) and batch number only;
+DATA outest;
+	SET outest;
+	BatchEffect=Estimate;
+	KEEP Batch BatchEffect;
+RUN;
+*merge with dataset (which is already sorted by batch);
+DATA ODS_alphacarot;
+	MERGE ODS_alphacarot outest;
+	BY Batch;
+	batchadj_alphacarot=alphacarot_P-BatchEffect;
+RUN;
+
+*run means on old and new values.;
+PROC MEANS data=ODS_alphacarot;
+	CLASS batch;
+	VAR alphacarot_P batchadj_alphacarot;
+RUN;
+
+PROC MEANS data=ODS_alphacarot;
+	VAR alphacarot_P batchadj_alphacarot;
+RUN;
+*adjusted alphacarot_P has slightly lower variance than the original estimates;
+
+*save new means so that can make plot with batch-specific means;
+PROC MEANS data=ODS_alphacarot;
+	CLASS BATCH;
+	VAR batchadj_alphacarot;
+	ODS OUTPUT Summary=newbatchmeans;
+RUN;
+
+DATA newbatchmeans;
+	SET newbatchmeans;
+	Batch_mean_alphacarot=batchadj_alphacarot_Mean;
+	KEEP Batch Batch_mean_alphacarot;
+RUN;
+
+*merge with data;
+DATA ODS_alphacarot;
+	MERGE ODS_alphacarot batchmeans;
+	BY Batch;
+RUN;
+ 
+PROC SGPLOT data=ODS_alphacarot;
+  scatter x=batch y=batchadj_alphacarot;
+  series x=batch y=Batch_mean_alphacarot / MARKERS LINEATTRS = (THICKNESS =2 COLOR=RED);
+  TITLE "Total carotenoids by batch, all samples";
+ 	YAXIS label="carotenoids" min=0 max=125 values=(0 25 50 75 100 125);
+	XAXIS label="Batch Number";
+run;
+ 
+
+*adjusted for seasonal variation*;
+ods graphics on;
+PROC LOESS DATA = ODS_alphacarot;
+ MODEL batchadj_alphacarot = Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+ ODS OUTPUT OutputStatistics = OutStats;
+RUN;
+DATA OutStats;
+	SET OutStats;
+	loess_pred=Pred;
+	KEEP Blood_Draw_WeekOfYear loess_pred /* regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+PROC SORT data=OutStats;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+PROC SORT data=ODS_alphacarot;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+DATA ODS_alphacarot_adj;
+	MERGE ODS_alphacarot Outstats;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+	resid_alphacarot=batchadj_alphacarot-loess_pred;
+	adjalphacarot=resid_alphacarot+Batch_mean_alphacarot; 
+	keep PSID adjalphacarot; 
+RUN;
+
+
+
+
+
+
+
+
+***************************************************;
+*betacarot*;
+***************************************************;
+
+*Calculate per batch CV;
+PROC MEANS data=ODS_all;
+	CLASS batch;
+	VAR betacarot_P;
+	ODS OUTPUT Summary=BatchCVs;
+RUN;
+
+DATA BatchCVs;
+	SET BatchCVs;
+	CV=betacarot_P_StdDev/betacarot_P_Mean;
+RUN;
+
+PROC PRINT data=BatchCVs;
+RUN;
+
+*looking to make sure that no batch jumps out as being extremely bad;
+PROC MEANS data=BatchCVs;
+	VAR CV;
+RUN;
+
+*check to make sure there is not a batch trend;
+ 
+  PROC SGPLOT data=ODS_all;
+  scatter x=batch y=betacarot_P;
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+
+*add loess smoother - just to help visualize;
+PROC SGPLOT data=ODS_all;
+  scatter x=batch y=betacarot_P;
+  loess x=batch y=betacarot_P;
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+ 
+  
+*make plot with batch-specific means;
+PROC MEANS data=ODS_all;
+	CLASS BATCH;
+	VAR betacarot_P;
+	ODS OUTPUT Summary=batchmeans;
+RUN;
+
+DATA batchmeans;
+	SET batchmeans;
+	Batch_mean_betacarot=betacarot_P_Mean;
+	KEEP Batch Batch_mean_betacarot;
+RUN;
+
+*merge with data;
+PROC SORT data=ODS_all;
+	BY Batch;
+RUN;
+
+DATA ODS_betacarot;
+	MERGE ODS_all batchmeans;
+	BY Batch;
+RUN;
+
+*plot all data by batch with line for batch means;
+ 
+  PROC SGPLOT data=ODS_betacarot;
+  scatter x=batch y=betacarot_P;
+  series x=batch y=Batch_mean_betacarot / MARKERS LINEATTRS = (THICKNESS =2 COLOR=RED);
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+ 
+*now do batch adjustment and replot;
+
+*adjust for batch using random effects model;
+PROC SORT data=ODS_betacarot; 	BY BATCH; RUN;
+
+*parms have to be specified but should not matter that much - just a starting place for model estimation;
+
+*betacarot*;
+PROC NLMIXED DATA = ODS_betacarot; 
+	PARMS b0=1.5 bvar=1 avar=0.1; 
+		eta = b0 + a; 
+	MODEL betacarot_P ~ normal(eta,bvar); 
+	RANDOM a ~ normal(0,avar) subject=batch OUT=outest; 
+RUN;
+*keep batch adjustment term (a) and batch number only;
+DATA outest;
+	SET outest;
+	BatchEffect=Estimate;
+	KEEP Batch BatchEffect;
+RUN;
+*merge with dataset (which is already sorted by batch);
+DATA ODS_betacarot;
+	MERGE ODS_betacarot outest;
+	BY Batch;
+	batchadj_betacarot=betacarot_P-BatchEffect;
+RUN;
+
+*run means on old and new values.;
+PROC MEANS data=ODS_betacarot;
+	CLASS batch;
+	VAR betacarot_P batchadj_betacarot;
+RUN;
+
+PROC MEANS data=ODS_betacarot;
+	VAR betacarot_P batchadj_betacarot;
+RUN;
+*adjusted betacarot_P has slightly lower variance than the original estimates;
+
+*save new means so that can make plot with batch-specific means;
+PROC MEANS data=ODS_betacarot;
+	CLASS BATCH;
+	VAR batchadj_betacarot;
+	ODS OUTPUT Summary=newbatchmeans;
+RUN;
+
+DATA newbatchmeans;
+	SET newbatchmeans;
+	Batch_mean_betacarot=batchadj_betacarot_Mean;
+	KEEP Batch Batch_mean_betacarot;
+RUN;
+
+*merge with data;
+DATA ODS_betacarot;
+	MERGE ODS_betacarot batchmeans;
+	BY Batch;
+RUN;
+ 
+PROC SGPLOT data=ODS_betacarot;
+  scatter x=batch y=batchadj_betacarot;
+  series x=batch y=Batch_mean_betacarot / MARKERS LINEATTRS = (THICKNESS =2 COLOR=RED);
+  TITLE "Total carotenoids by batch, all samples";
+ 	YAXIS label="carotenoids" min=0 max=125 values=(0 25 50 75 100 125);
+	XAXIS label="Batch Number";
+run;
+ 
+
+*adjusted for seasonal variation*;
+ods graphics on;
+PROC LOESS DATA = ODS_betacarot;
+ MODEL batchadj_betacarot = Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+ ODS OUTPUT OutputStatistics = OutStats;
+RUN;
+DATA OutStats;
+	SET OutStats;
+	loess_pred=Pred;
+	KEEP Blood_Draw_WeekOfYear loess_pred /* regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+PROC SORT data=OutStats;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+PROC SORT data=ODS_betacarot;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+DATA ODS_betacarot_adj;
+	MERGE ODS_betacarot Outstats;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+	resid_betacarot=batchadj_betacarot-loess_pred;
+	adjbetacarot=resid_betacarot+Batch_mean_betacarot; 
+	keep PSID adjbetacarot; 
+RUN;
+
+
+
+
+***************************************************;
+*lutzea*;
+***************************************************;
+
+*Calculate per batch CV;
+PROC MEANS data=ODS_all;
+	CLASS batch;
+	VAR lutzea_P;
+	ODS OUTPUT Summary=BatchCVs;
+RUN;
+
+DATA BatchCVs;
+	SET BatchCVs;
+	CV=lutzea_P_StdDev/lutzea_P_Mean;
+RUN;
+
+PROC PRINT data=BatchCVs;
+RUN;
+
+*looking to make sure that no batch jumps out as being extremely bad;
+PROC MEANS data=BatchCVs;
+	VAR CV;
+RUN;
+ 
+*check to make sure there is not a batch trend;
+PROC SGPLOT data=ODS_all;
+  scatter x=batch y=lutzea_P;
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+
+*add loess smoother - just to help visualize;
+PROC SGPLOT data=ODS_all;
+  scatter x=batch y=lutzea_P;
+  loess x=batch y=lutzea_P;
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+ 
+*make plot with batch-specific means;
+PROC MEANS data=ODS_all;
+	CLASS BATCH;
+	VAR lutzea_P;
+	ODS OUTPUT Summary=batchmeans;
+RUN;
+
+DATA batchmeans;
+	SET batchmeans;
+	Batch_mean_lutzea=lutzea_P_Mean;
+	KEEP Batch Batch_mean_lutzea;
+RUN;
+
+*merge with data;
+PROC SORT data=ODS_all;
+	BY Batch;
+RUN;
+
+DATA ODS_lutzea;
+	MERGE ODS_all batchmeans;
+	BY Batch;
+RUN;
+
+*plot all data by batch with line for batch means;
+ 
+  PROC SGPLOT data=ODS_lutzea;
+  scatter x=batch y=lutzea_P;
+  series x=batch y=Batch_mean_lutzea / MARKERS LINEATTRS = (THICKNESS =2 COLOR=RED);
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+ 
+  
+*now do batch adjustment and replot;
+
+*adjust for batch using random effects model;
+PROC SORT data=ODS_lutzea; 	BY BATCH; RUN;
+
+*parms have to be specified but should not matter that much - just a starting place for model estimation;
+
+*lutzea*;
+PROC NLMIXED DATA = ODS_lutzea; 
+	PARMS b0=1.5 bvar=1 avar=0.1; 
+		eta = b0 + a; 
+	MODEL lutzea_P ~ normal(eta,bvar); 
+	RANDOM a ~ normal(0,avar) subject=batch OUT=outest; 
+RUN;
+*keep batch adjustment term (a) and batch number only;
+DATA outest;
+	SET outest;
+	BatchEffect=Estimate;
+	KEEP Batch BatchEffect;
+RUN;
+*merge with dataset (which is already sorted by batch);
+DATA ODS_lutzea;
+	MERGE ODS_lutzea outest;
+	BY Batch;
+	batchadj_lutzea=lutzea_P-BatchEffect;
+RUN;
+
+*run means on old and new values.;
+PROC MEANS data=ODS_lutzea;
+	CLASS batch;
+	VAR lutzea_P batchadj_lutzea;
+RUN;
+
+PROC MEANS data=ODS_lutzea;
+	VAR lutzea_P batchadj_lutzea;
+RUN;
+*adjusted lutzea_P has slightly lower variance than the original estimates;
+
+*save new means so that can make plot with batch-specific means;
+PROC MEANS data=ODS_lutzea;
+	CLASS BATCH;
+	VAR batchadj_lutzea;
+	ODS OUTPUT Summary=newbatchmeans;
+RUN;
+
+DATA newbatchmeans;
+	SET newbatchmeans;
+	Batch_mean_lutzea=batchadj_lutzea_Mean;
+	KEEP Batch Batch_mean_lutzea;
+RUN;
+
+*merge with data;
+DATA ODS_lutzea;
+	MERGE ODS_lutzea batchmeans;
+	BY Batch;
+RUN;
+ 
+PROC SGPLOT data=ODS_lutzea;
+  scatter x=batch y=batchadj_lutzea;
+  series x=batch y=Batch_mean_lutzea / MARKERS LINEATTRS = (THICKNESS =2 COLOR=RED);
+  TITLE "Total carotenoids by batch, all samples";
+ 	YAXIS label="carotenoids" min=0 max=125 values=(0 25 50 75 100 125);
+	XAXIS label="Batch Number";
+run;
+ 
+
+*adjusted for seasonal variation*;
+ods graphics on;
+PROC LOESS DATA = ODS_lutzea;
+ MODEL batchadj_lutzea = Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+ ODS OUTPUT OutputStatistics = OutStats;
+RUN;
+DATA OutStats;
+	SET OutStats;
+	loess_pred=Pred;
+	KEEP Blood_Draw_WeekOfYear loess_pred /* regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+PROC SORT data=OutStats;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+PROC SORT data=ODS_lutzea;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+DATA ODS_lutzea_adj;
+	MERGE ODS_lutzea Outstats;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+	resid_lutzea=batchadj_lutzea-loess_pred;
+	adjlutzea=resid_lutzea+Batch_mean_lutzea; 
+	keep PSID adjlutzea; 
+RUN;
+
+
+
+***************************************************;
+*cryp*;
+***************************************************;
+
+*Calculate per batch CV;
+PROC MEANS data=ODS_all;
+	CLASS batch;
+	VAR b_cryp_p;
+	ODS OUTPUT Summary=BatchCVs;
+RUN;
+
+DATA BatchCVs;
+	SET BatchCVs;
+	CV=b_cryp_p_StdDev/b_cryp_p_Mean;
+RUN;
+
+PROC PRINT data=BatchCVs;
+RUN;
+
+*looking to make sure that no batch jumps out as being extremely bad;
+PROC MEANS data=BatchCVs;
+	VAR CV;
+RUN;
+ 
+*check to make sure there is not a batch trend;
+PROC SGPLOT data=ODS_all;
+  scatter x=batch y=b_cryp_p;
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+
+*add loess smoother - just to help visualize;
+PROC SGPLOT data=ODS_all;
+  scatter x=batch y=b_cryp_p;
+  loess x=batch y=b_cryp_p;
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+ 
+  
+*make plot with batch-specific means;
+PROC MEANS data=ODS_all;
+	CLASS BATCH;
+	VAR b_cryp_p;
+	ODS OUTPUT Summary=batchmeans;
+RUN;
+
+DATA batchmeans;
+	SET batchmeans;
+	Batch_mean_cryp=b_cryp_p_Mean;
+	KEEP Batch Batch_mean_cryp;
+RUN;
+
+*merge with data;
+PROC SORT data=ODS_all;
+	BY Batch;
+RUN;
+
+DATA ODS_cryp;
+	MERGE ODS_all batchmeans;
+	BY Batch;
+RUN;
+
+*plot all data by batch with line for batch means;
+ 
+  PROC SGPLOT data=ODS_cryp;
+  scatter x=batch y=b_cryp_p;
+  series x=batch y=Batch_mean_cryp / MARKERS LINEATTRS = (THICKNESS =2 COLOR=RED);
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+ 
+  
+*now do batch adjustment and replot;
+
+*adjust for batch using random effects model;
+PROC SORT data=ODS_cryp; 	BY BATCH; RUN;
+
+*parms have to be specified but should not matter that much - just a starting place for model estimation;
+
+*beta cryp*;
+PROC NLMIXED DATA = ODS_cryp; 
+	PARMS b0=1.5 bvar=1 avar=0.1; 
+		eta = b0 + a; 
+	MODEL b_cryp_p ~ normal(eta,bvar); 
+	RANDOM a ~ normal(0,avar) subject=batch OUT=outest; 
+RUN;
+*keep batch adjustment term (a) and batch number only;
+DATA outest;
+	SET outest;
+	BatchEffect=Estimate;
+	KEEP Batch BatchEffect;
+RUN;
+*merge with dataset (which is already sorted by batch);
+DATA ODS_cryp;
+	MERGE ODS_cryp outest;
+	BY Batch;
+	batchadj_cryp=b_cryp_p-BatchEffect;
+RUN;
+
+*run means on old and new values.;
+PROC MEANS data=ODS_cryp;
+	CLASS batch;
+	VAR b_cryp_p batchadj_cryp;
+RUN;
+
+PROC MEANS data=ODS_cryp;
+	VAR b_cryp_p batchadj_cryp;
+RUN;
+*adjusted b_cryp_p has slightly lower variance than the original estimates;
+
+*save new means so that can make plot with batch-specific means;
+PROC MEANS data=ODS_cryp;
+	CLASS BATCH;
+	VAR batchadj_cryp;
+	ODS OUTPUT Summary=newbatchmeans;
+RUN;
+
+DATA newbatchmeans;
+	SET newbatchmeans;
+	Batch_mean_cryp=batchadj_cryp_Mean;
+	KEEP Batch Batch_mean_cryp;
+RUN;
+
+*merge with data;
+DATA ODS_cryp;
+	MERGE ODS_cryp batchmeans;
+	BY Batch;
+RUN;
+ 
+PROC SGPLOT data=ODS_cryp;
+  scatter x=batch y=batchadj_cryp;
+  series x=batch y=Batch_mean_cryp / MARKERS LINEATTRS = (THICKNESS =2 COLOR=RED);
+  TITLE "Total carotenoids by batch, all samples";
+ 	YAXIS label="carotenoids" min=0 max=125 values=(0 25 50 75 100 125);
+	XAXIS label="Batch Number";
+run;
+ 
+
+*adjusted for seasonal variation*;
+ods graphics on;
+PROC LOESS DATA = ODS_cryp;
+ MODEL batchadj_cryp = Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+ ODS OUTPUT OutputStatistics = OutStats;
+RUN;
+DATA OutStats;
+	SET OutStats;
+	loess_pred=Pred;
+	KEEP Blood_Draw_WeekOfYear loess_pred /* regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+PROC SORT data=OutStats;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+PROC SORT data=ODS_cryp;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+DATA ODS_cryp_adj;
+	MERGE ODS_cryp Outstats;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+	resid_cryp=batchadj_cryp-loess_pred;
+	adjcryp=resid_cryp+Batch_mean_cryp; 
+	keep PSID adjcryp; 
+RUN;
+
+
+
+
+***************************************************;
+*lyc*;
+***************************************************;
+
+*Calculate per batch CV;
+PROC MEANS data=ODS_all;
+	CLASS batch;
+	VAR lyc_P;
+	ODS OUTPUT Summary=BatchCVs;
+RUN;
+
+DATA BatchCVs;
+	SET BatchCVs;
+	CV=lyc_P_StdDev/lyc_P_Mean;
+RUN;
+
+PROC PRINT data=BatchCVs;
+RUN;
+
+*looking to make sure that no batch jumps out as being extremely bad;
+PROC MEANS data=BatchCVs;
+	VAR CV;
+RUN;
+
+*check to make sure there is not a batch trend;
+ 
+  PROC SGPLOT data=ODS_all;
+  scatter x=batch y=lyc_P;
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+
+  
+*add loess smoother - just to help visualize;
+
+  PROC SGPLOT data=ODS_all;
+  scatter x=batch y=lyc_P;
+  loess x=batch y=lyc_P;
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+ 
+*make plot with batch-specific means;
+PROC MEANS data=ODS_all;
+	CLASS BATCH;
+	VAR lyc_P;
+	ODS OUTPUT Summary=batchmeans;
+RUN;
+
+DATA batchmeans;
+	SET batchmeans;
+	Batch_mean_lyc=lyc_P_Mean;
+	KEEP Batch Batch_mean_lyc;
+RUN;
+
+*merge with data;
+PROC SORT data=ODS_all;
+	BY Batch;
+RUN;
+
+DATA ODS_lyc;
+	MERGE ODS_all batchmeans;
+	BY Batch;
+RUN;
+ 
+*plot all data by batch with line for batch means;
+PROC SGPLOT data=ODS_lyc;
+  scatter x=batch y=lyc_P;
+  series x=batch y=Batch_mean_lyc / MARKERS LINEATTRS = (THICKNESS =2 COLOR=RED);
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+ 
+*now do batch adjustment and replot;
+
+*adjust for batch using random effects model;
+PROC SORT data=ODS_lyc; 	BY BATCH; RUN;
+
+*parms have to be specified but should not matter that much - just a starting place for model estimation;
+
+*lyc*;
+PROC NLMIXED DATA = ODS_lyc; 
+	PARMS b0=1.5 bvar=1 avar=0.1; 
+		eta = b0 + a; 
+	MODEL lyc_P ~ normal(eta,bvar); 
+	RANDOM a ~ normal(0,avar) subject=batch OUT=outest; 
+RUN;
+*keep batch adjustment term (a) and batch number only;
+DATA outest;
+	SET outest;
+	BatchEffect=Estimate;
+	KEEP Batch BatchEffect;
+RUN;
+*merge with dataset (which is already sorted by batch);
+DATA ODS_lyc;
+	MERGE ODS_lyc outest;
+	BY Batch;
+	batchadj_lyc=lyc_P-BatchEffect;
+RUN;
+
+*run means on old and new values.;
+PROC MEANS data=ODS_lyc;
+	CLASS batch;
+	VAR lyc_P batchadj_lyc;
+RUN;
+
+PROC MEANS data=ODS_lyc;
+	VAR lyc_P batchadj_lyc;
+RUN;
+*adjusted lyc_P has slightly lower variance than the original estimates;
+
+*save new means so that can make plot with batch-specific means;
+PROC MEANS data=ODS_lyc;
+	CLASS BATCH;
+	VAR batchadj_lyc;
+	ODS OUTPUT Summary=newbatchmeans;
+RUN;
+
+DATA newbatchmeans;
+	SET newbatchmeans;
+	Batch_mean_lyc=batchadj_lyc_Mean;
+	KEEP Batch Batch_mean_lyc;
+RUN;
+
+*merge with data;
+DATA ODS_lyc;
+	MERGE ODS_lyc batchmeans;
+	BY Batch;
+RUN;
+ 
+PROC SGPLOT data=ODS_lyc;
+  scatter x=batch y=batchadj_lyc;
+  series x=batch y=Batch_mean_lyc / MARKERS LINEATTRS = (THICKNESS =2 COLOR=RED);
+  TITLE "Total carotenoids by batch, all samples";
+ 	YAXIS label="carotenoids" min=0 max=125 values=(0 25 50 75 100 125);
+	XAXIS label="Batch Number";
+run;
+
+ 
+*adjusted for seasonal variation*;
+ods graphics on;
+PROC LOESS DATA = ODS_lyc;
+ MODEL batchadj_lyc = Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+ ODS OUTPUT OutputStatistics = OutStats;
+RUN;
+DATA OutStats;
+	SET OutStats;
+	loess_pred=Pred;
+	KEEP Blood_Draw_WeekOfYear loess_pred /* regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+PROC SORT data=OutStats;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+PROC SORT data=ODS_lyc;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+DATA ODS_lyc_adj;
+	MERGE ODS_lyc Outstats;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+	resid_lyc=batchadj_lyc-loess_pred;
+	adjlyc=resid_lyc+Batch_mean_lyc; 
+	keep PSID adjlyc; 
+RUN;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************;
+*retinol*;
+***************************************************;
+
+*Calculate per batch CV;
+PROC MEANS data=ODS_all;
+	CLASS batch;
+	VAR retinol_P;
+	ODS OUTPUT Summary=BatchCVs;
+RUN;
+
+DATA BatchCVs;
+	SET BatchCVs;
+	CV=retinol_P_StdDev/retinol_P_Mean;
+RUN;
+
+PROC PRINT data=BatchCVs;
+RUN;
+
+*looking to make sure that no batch jumps out as being extremely bad;
+PROC MEANS data=BatchCVs;
+	VAR CV;
+RUN;
+ 
+*check to make sure there is not a batch trend;
+PROC SGPLOT data=ODS_all;
+  scatter x=batch y=retinol_P;
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+
+*add loess smoother - just to help visualize;
+PROC SGPLOT data=ODS_all;
+  scatter x=batch y=retinol_P;
+  loess x=batch y=retinol_P;
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+ 
+*make plot with batch-specific means;
+PROC MEANS data=ODS_all;
+	CLASS BATCH;
+	VAR retinol_P;
+	ODS OUTPUT Summary=batchmeans;
+RUN;
+
+DATA batchmeans;
+	SET batchmeans;
+	Batch_mean_retinol=retinol_P_Mean;
+	KEEP Batch Batch_mean_retinol;
+RUN;
+
+*merge with data;
+PROC SORT data=ODS_all;
+	BY Batch;
+RUN;
+
+DATA ODS_retinol;
+	MERGE ODS_all batchmeans;
+	BY Batch;
+RUN;
+ 
+*plot all data by batch with line for batch means;
+PROC SGPLOT data=ODS_retinol;
+  scatter x=batch y=retinol_P;
+  series x=batch y=Batch_mean_retinol / MARKERS LINEATTRS = (THICKNESS =2 COLOR=RED);
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+ 
+*now do batch adjustment and replot;
+
+*adjust for batch using random effects model;
+PROC SORT data=ODS_retinol; 	BY BATCH; RUN;
+
+*parms have to be specified but should not matter that much - just a starting place for model estimation;
+
+*retinol*;
+PROC NLMIXED DATA = ODS_retinol; 
+	PARMS b0=1.5 bvar=1 avar=0.1; 
+		eta = b0 + a; 
+	MODEL retinol_P ~ normal(eta,bvar); 
+	RANDOM a ~ normal(0,avar) subject=batch OUT=outest; 
+RUN;
+*keep batch adjustment term (a) and batch number only;
+DATA outest;
+	SET outest;
+	BatchEffect=Estimate;
+	KEEP Batch BatchEffect;
+RUN;
+*merge with dataset (which is already sorted by batch);
+DATA ODS_retinol;
+	MERGE ODS_retinol outest;
+	BY Batch;
+	batchadj_retinol=retinol_P-BatchEffect;
+RUN;
+
+*run means on old and new values.;
+PROC MEANS data=ODS_retinol;
+	CLASS batch;
+	VAR retinol_P batchadj_retinol;
+RUN;
+
+PROC MEANS data=ODS_retinol;
+	VAR retinol_P batchadj_retinol;
+RUN;
+*adjusted retinol_P has slightly lower variance than the original estimates;
+
+*save new means so that can make plot with batch-specific means;
+PROC MEANS data=ODS_retinol;
+	CLASS BATCH;
+	VAR batchadj_retinol;
+	ODS OUTPUT Summary=newbatchmeans;
+RUN;
+
+DATA newbatchmeans;
+	SET newbatchmeans;
+	Batch_mean_retinol=batchadj_retinol_Mean;
+	KEEP Batch Batch_mean_retinol;
+RUN;
+
+*merge with data;
+DATA ODS_retinol;
+	MERGE ODS_retinol batchmeans;
+	BY Batch;
+RUN;
+ 
+
+PROC SGPLOT data=ODS_retinol;
+  scatter x=batch y=batchadj_retinol;
+  series x=batch y=Batch_mean_retinol / MARKERS LINEATTRS = (THICKNESS =2 COLOR=RED);
+  TITLE "Total carotenoids by batch, all samples";
+ 	YAXIS label="carotenoids" min=0 max=125 values=(0 25 50 75 100 125);
+	XAXIS label="Batch Number";
+run;
+ 
+
+*adjusted for seasonal variation*;
+ods graphics on;
+PROC LOESS DATA = ODS_retinol;
+ MODEL batchadj_retinol = Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+ ODS OUTPUT OutputStatistics = OutStats;
+RUN;
+DATA OutStats;
+	SET OutStats;
+	loess_pred=Pred;
+	KEEP Blood_Draw_WeekOfYear loess_pred /* regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+PROC SORT data=OutStats;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+PROC SORT data=ODS_retinol;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+DATA ODS_retinol_adj;
+	MERGE ODS_retinol Outstats;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+	resid_retinol=batchadj_retinol-loess_pred;
+	adjretinol=resid_retinol+Batch_mean_retinol; 
+	keep PSID adjretinol; 
+RUN;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+***************************************************;
+*tocoph*;
+***************************************************;
+
+*Calculate per batch CV;
+PROC MEANS data=ODS_all;
+	CLASS batch;
+	VAR tocoph_P;
+	ODS OUTPUT Summary=BatchCVs;
+RUN;
+
+DATA BatchCVs;
+	SET BatchCVs;
+	CV=tocoph_P_StdDev/tocoph_P_Mean;
+RUN;
+
+PROC PRINT data=BatchCVs;
+RUN;
+
+*looking to make sure that no batch jumps out as being extremely bad;
+PROC MEANS data=BatchCVs;
+	VAR CV;
+RUN;
+ 
+*check to make sure there is not a batch trend;
+PROC SGPLOT data=ODS_all;
+  scatter x=batch y=tocoph_P;
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+
+*add loess smoother - just to help visualize;
+PROC SGPLOT data=ODS_all;
+  scatter x=batch y=tocoph_P;
+  loess x=batch y=tocoph_P;
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+ 
+*make plot with batch-specific means;
+PROC MEANS data=ODS_all;
+	CLASS BATCH;
+	VAR tocoph_P;
+	ODS OUTPUT Summary=batchmeans;
+RUN;
+
+DATA batchmeans;
+	SET batchmeans;
+	Batch_mean_tocoph=tocoph_P_Mean;
+	KEEP Batch Batch_mean_tocoph;
+RUN;
+
+*merge with data;
+PROC SORT data=ODS_all;
+	BY Batch;
+RUN;
+
+DATA ODS_tocoph;
+	MERGE ODS_all batchmeans;
+	BY Batch;
+RUN;
+ 
+*plot all data by batch with line for batch means;
+PROC SGPLOT data=ODS_tocoph;
+  scatter x=batch y=tocoph_P;
+  series x=batch y=Batch_mean_tocoph / MARKERS LINEATTRS = (THICKNESS =2 COLOR=RED);
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+ 
+*now do batch adjustment and replot;
+
+*adjust for batch using random effects model;
+PROC SORT data=ODS_tocoph; 	BY BATCH; RUN;
+
+*parms have to be specified but should not matter that much - just a starting place for model estimation;
+
+*tocoph*;
+PROC NLMIXED DATA = ODS_tocoph; 
+	PARMS b0=1.5 bvar=1 avar=0.1; 
+		eta = b0 + a; 
+	MODEL tocoph_P ~ normal(eta,bvar); 
+	RANDOM a ~ normal(0,avar) subject=batch OUT=outest; 
+RUN;
+*keep batch adjustment term (a) and batch number only;
+DATA outest;
+	SET outest;
+	BatchEffect=Estimate;
+	KEEP Batch BatchEffect;
+RUN;
+*merge with dataset (which is already sorted by batch);
+DATA ODS_tocoph;
+	MERGE ODS_tocoph outest;
+	BY Batch;
+	batchadj_tocoph=tocoph_P-BatchEffect;
+RUN;
+
+*run means on old and new values.;
+PROC MEANS data=ODS_tocoph;
+	CLASS batch;
+	VAR tocoph_P batchadj_tocoph;
+RUN;
+
+PROC MEANS data=ODS_tocoph;
+	VAR tocoph_P batchadj_tocoph;
+RUN;
+*adjusted tocoph_P has slightly lower variance than the original estimates;
+
+*save new means so that can make plot with batch-specific means;
+PROC MEANS data=ODS_tocoph;
+	CLASS BATCH;
+	VAR batchadj_tocoph;
+	ODS OUTPUT Summary=newbatchmeans;
+RUN;
+
+DATA newbatchmeans;
+	SET newbatchmeans;
+	Batch_mean_tocoph=batchadj_tocoph_Mean;
+	KEEP Batch Batch_mean_tocoph;
+RUN;
+
+*merge with data;
+DATA ODS_tocoph;
+	MERGE ODS_tocoph batchmeans;
+	BY Batch;
+RUN;
+ 
+PROC SGPLOT data=ODS_tocoph;
+  scatter x=batch y=batchadj_tocoph;
+  series x=batch y=Batch_mean_tocoph / MARKERS LINEATTRS = (THICKNESS =2 COLOR=RED);
+  TITLE "Total carotenoids by batch, all samples";
+ 	YAXIS label="carotenoids" min=0 max=125 values=(0 25 50 75 100 125);
+	XAXIS label="Batch Number";
+run;
+ 
+
+*adjusted for seasonal variation*;
+ods graphics on;
+PROC LOESS DATA = ODS_tocoph;
+ MODEL batchadj_tocoph = Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+ ODS OUTPUT OutputStatistics = OutStats;
+RUN;
+DATA OutStats;
+	SET OutStats;
+	loess_pred=Pred;
+	KEEP Blood_Draw_WeekOfYear loess_pred /* regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+PROC SORT data=OutStats;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+PROC SORT data=ODS_tocoph;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+DATA ODS_tocoph_adj;
+	MERGE ODS_tocoph Outstats;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+	resid_tocoph=batchadj_tocoph-loess_pred;
+	adjtocoph=resid_tocoph+Batch_mean_tocoph; 
+	keep PSID adjtocoph; 
+RUN;
+
+
+
+
+***************************************************;
+*lutein*;
+***************************************************;
+
+*Calculate per batch CV;
+PROC MEANS data=ODS_all;
+	CLASS batch;
+	VAR lutein_p;
+	ODS OUTPUT Summary=BatchCVs;
+RUN;
+
+DATA BatchCVs;
+	SET BatchCVs;
+	CV=lutein_p_StdDev/lutein_p_Mean;
+RUN;
+
+PROC PRINT data=BatchCVs;
+RUN;
+
+*looking to make sure that no batch jumps out as being extremely bad;
+PROC MEANS data=BatchCVs;
+	VAR CV;
+RUN;
+ 
+*check to make sure there is not a batch trend;
+PROC SGPLOT data=ODS_all;
+  scatter x=batch y=lutein_p;
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+
+*add loess smoother - just to help visualize;
+PROC SGPLOT data=ODS_all;
+  scatter x=batch y=lutein_p;
+  loess x=batch y=lutein_p;
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+ 
+*make plot with batch-specific means;
+PROC MEANS data=ODS_all;
+	CLASS BATCH;
+	VAR lutein_p;
+	ODS OUTPUT Summary=batchmeans;
+RUN;
+
+DATA batchmeans;
+	SET batchmeans;
+	Batch_mean_lutein=lutein_p_Mean;
+	KEEP Batch Batch_mean_lutein;
+RUN;
+
+*merge with data;
+PROC SORT data=ODS_all;
+	BY Batch;
+RUN;
+
+DATA ODS_lutein;
+	MERGE ODS_all batchmeans;
+	BY Batch;
+RUN;
+
+*plot all data by batch with line for batch means;
+ 
+  PROC SGPLOT data=ODS_lutein;
+  scatter x=batch y=lutein_p;
+  series x=batch y=Batch_mean_lutein / MARKERS LINEATTRS = (THICKNESS =2 COLOR=RED);
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+ 
+  
+*now do batch adjustment and replot;
+
+*adjust for batch using random effects model;
+PROC SORT data=ODS_lutein; 	BY BATCH; RUN;
+
+*parms have to be specified but should not matter that much - just a starting place for model estimation;
+
+*lutein*;
+PROC NLMIXED DATA = ODS_lutein; 
+	PARMS b0=1.5 bvar=1 avar=0.1; 
+		eta = b0 + a; 
+	MODEL lutein_p ~ normal(eta,bvar); 
+	RANDOM a ~ normal(0,avar) subject=batch OUT=outest; 
+RUN;
+*keep batch adjustment term (a) and batch number only;
+DATA outest;
+	SET outest;
+	BatchEffect=Estimate;
+	KEEP Batch BatchEffect;
+RUN;
+*merge with dataset (which is already sorted by batch);
+DATA ODS_lutein;
+	MERGE ODS_lutein outest;
+	BY Batch;
+	batchadj_lutein=lutein_p-BatchEffect;
+RUN;
+
+*run means on old and new values.;
+PROC MEANS data=ODS_lutein;
+	CLASS batch;
+	VAR lutein_p batchadj_lutein;
+RUN;
+
+PROC MEANS data=ODS_lutein;
+	VAR lutein_p batchadj_lutein;
+RUN;
+*adjusted lutein_p has slightly lower variance than the original estimates;
+
+*save new means so that can make plot with batch-specific means;
+PROC MEANS data=ODS_lutein;
+	CLASS BATCH;
+	VAR batchadj_lutein;
+	ODS OUTPUT Summary=newbatchmeans;
+RUN;
+
+DATA newbatchmeans;
+	SET newbatchmeans;
+	Batch_mean_lutein=batchadj_lutein_Mean;
+	KEEP Batch Batch_mean_lutein;
+RUN;
+
+*merge with data;
+DATA ODS_lutein;
+	MERGE ODS_lutein batchmeans;
+	BY Batch;
+RUN;
+ 
+PROC SGPLOT data=ODS_lutein;
+  scatter x=batch y=batchadj_lutein;
+  series x=batch y=Batch_mean_lutein / MARKERS LINEATTRS = (THICKNESS =2 COLOR=RED);
+  TITLE "Total carotenoids by batch, all samples";
+ 	YAXIS label="carotenoids" min=0 max=125 values=(0 25 50 75 100 125);
+	XAXIS label="Batch Number";
+run;
+ 
+
+*adjusted for seasonal variation*;
+ods graphics on;
+PROC LOESS DATA = ODS_lutein;
+ MODEL batchadj_lutein = Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+ ODS OUTPUT OutputStatistics = OutStats;
+RUN;
+DATA OutStats;
+	SET OutStats;
+	loess_pred=Pred;
+	KEEP Blood_Draw_WeekOfYear loess_pred /* regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+PROC SORT data=OutStats;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+PROC SORT data=ODS_lutein;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+
+DATA ODS_lutein_adj;
+	MERGE ODS_lutein Outstats;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+	resid_lutein=batchadj_lutein-loess_pred;
+	adjlutein=resid_lutein+Batch_mean_lutein; 
+	keep PSID adjlutein; 
+RUN;
+
+***************************************************;
+* END OF lutein data handling*;
+***************************************************;
+
+
+***************************************************;
+*zea_p*;
+***************************************************;
+
+*Calculate per batch CV;
+PROC MEANS data=ODS_all;
+	CLASS batch;
+	VAR zea_p;
+	ODS OUTPUT Summary=BatchCVs;
+RUN;
+
+DATA BatchCVs;
+	SET BatchCVs;
+	CV=zea_p_StdDev/zea_p_Mean;
+RUN;
+
+PROC PRINT data=BatchCVs;
+RUN;
+
+*looking to make sure that no batch jumps out as being extremely bad;
+PROC MEANS data=BatchCVs;
+	VAR CV;
+RUN;
+ 
+*check to make sure there is not a batch trend;
+PROC SGPLOT data=ODS_all;
+  scatter x=batch y=zea_p;
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+
+*add loess smoother - just to help visualize;
+PROC SGPLOT data=ODS_all;
+  scatter x=batch y=zea_p;
+  loess x=batch y=zea_p;
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+ 
+*make plot with batch-specific means;
+PROC MEANS data=ODS_all;
+	CLASS BATCH;
+	VAR zea_p;
+	ODS OUTPUT Summary=batchmeans;
+RUN;
+
+DATA batchmeans;
+	SET batchmeans;
+	Batch_mean_zea=zea_p_Mean;
+	KEEP Batch Batch_mean_zea;
+RUN;
+
+*merge with data;
+PROC SORT data=ODS_all;
+	BY Batch;
+RUN;
+
+DATA ODS_zea;
+	MERGE ODS_all batchmeans;
+	BY Batch;
+RUN;
+
+*plot all data by batch with line for batch means;
+ 
+  PROC SGPLOT data=ODS_zea;
+  scatter x=batch y=zea_p;
+  series x=batch y=Batch_mean_zea / MARKERS LINEATTRS = (THICKNESS =2 COLOR=RED);
+  TITLE "Total carotenoids level by batch, all samples";
+ 	YAXIS label="carotenoids";
+	XAXIS label="Batch Number";
+run;
+ 
+  
+*now do batch adjustment and replot;
+
+*adjust for batch using random effects model;
+PROC SORT data=ODS_zea; 	BY BATCH; RUN;
+
+*parms have to be specified but should not matter that much - just a starting place for model estimation;
+
+*zea*;
+PROC NLMIXED DATA = ODS_zea; 
+	PARMS b0=1.5 bvar=1 avar=0.1; 
+		eta = b0 + a; 
+	MODEL zea_p ~ normal(eta,bvar); 
+	RANDOM a ~ normal(0,avar) subject=batch OUT=outest; 
+RUN;
+*keep batch adjustment term (a) and batch number only;
+DATA outest;
+	SET outest;
+	BatchEffect=Estimate;
+	KEEP Batch BatchEffect;
+RUN;
+*merge with dataset (which is already sorted by batch);
+DATA ODS_zea;
+	MERGE ODS_zea outest;
+	BY Batch;
+	batchadj_zea=zea_p-BatchEffect;
+RUN;
+
+*run means on old and new values.;
+PROC MEANS data=ODS_zea;
+	CLASS batch;
+	VAR zea_p batchadj_zea;
+RUN;
+
+PROC MEANS data=ODS_zea;
+	VAR zea_p batchadj_zea;
+RUN;
+*adjusted zea_p has slightly lower variance than the original estimates;
+
+*save new means so that can make plot with batch-specific means;
+PROC MEANS data=ODS_zea;
+	CLASS BATCH;
+	VAR batchadj_zea;
+	ODS OUTPUT Summary=newbatchmeans;
+RUN;
+
+DATA newbatchmeans;
+	SET newbatchmeans;
+	Batch_mean_zea=batchadj_zea_Mean;
+	KEEP Batch Batch_mean_zea;
+RUN;
+
+*merge with data;
+DATA ODS_zea;
+	MERGE ODS_zea batchmeans;
+	BY Batch;
+RUN;
+ 
+PROC SGPLOT data=ODS_zea;
+  scatter x=batch y=batchadj_zea;
+  series x=batch y=Batch_mean_zea / MARKERS LINEATTRS = (THICKNESS =2 COLOR=RED);
+  TITLE "Total carotenoids by batch, all samples";
+ 	YAXIS label="carotenoids" min=0 max=125 values=(0 25 50 75 100 125);
+	XAXIS label="Batch Number";
+run;
+ 
+
+*adjusted for seasonal variation*;
+ods graphics on;
+PROC LOESS DATA = ODS_zea;
+ MODEL batchadj_zea = Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+ ODS OUTPUT OutputStatistics = OutStats;
+RUN;
+DATA OutStats;
+	SET OutStats;
+	loess_pred=Pred;
+	KEEP Blood_Draw_WeekOfYear loess_pred /* regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+PROC SORT data=OutStats;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+PROC SORT data=ODS_zea;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+RUN;
+
+DATA ODS_zea_adj;
+	MERGE ODS_zea Outstats;
+	BY Blood_Draw_WeekOfYear /*regODS_totalsupp_nomiss PLAT_nomiss black_nomiss*/;
+	resid_zea=batchadj_zea-loess_pred;
+	adjzea=resid_zea+Batch_mean_zea; 
+	keep PSID adjzea; 
+RUN;
+
+***************************************************;
+* END OF zea data handling*;
+***************************************************;
+
+
+
+PROC SORT data=ODS_all; BY PSID; RUN;
+PROC SORT data=ODS_totcarot_adj; BY PSID; RUN;
+PROC SORT data=ODS_alphacarot_adj; BY PSID; RUN;
+PROC SORT data=ODS_betacarot_adj; BY PSID; RUN;
+PROC SORT data=ODS_lyc_adj; BY PSID; RUN;
+PROC SORT data=ODS_cryp_adj; BY PSID; RUN;
+PROC SORT data=ODS_lutzea_adj; BY PSID; RUN;
+PROC SORT data=ODS_retinol_adj; BY PSID; RUN;
+PROC SORT data=ODS_tocoph_adj; BY PSID; RUN;
+PROC SORT data=ODS_lutein_adj; BY PSID; RUN; 
+PROC SORT data=ODS_zea_adj; BY PSID; RUN; 
+
+
+DATA cdat.ODS_all;
+MERGE ODS_all ODS_totcarot_adj ODS_alphacarot_adj ODS_betacarot_adj 
+ODS_lyc_adj ODS_cryp_adj ODS_lutzea_adj ODS_retinol_adj ODS_tocoph_adj
+ODS_lutein_adj ODS_zea_adj
+ ;
+BY PSID;
+RUN;
+
+
+
+PROC SORT data=ODS_totcarot; BY PSID; RUN;
+PROC SORT data=ODS_alphacarot; BY PSID; RUN;
+PROC SORT data=ODS_betacarot; BY PSID; RUN;
+PROC SORT data=ODS_lyc; BY PSID; RUN;
+PROC SORT data=ODS_cryp; BY PSID; RUN;
+PROC SORT data=ODS_lutzea; BY PSID; RUN;
+PROC SORT data=ODS_retinol; BY PSID; RUN;
+PROC SORT data=ODS_tocoph; BY PSID; RUN;
+PROC SORT data=ODS_lutein; BY PSID; RUN;
+PROC SORT data=ODS_zea; BY PSID; RUN;
+
+
+DATA cdat.ODS_all_noseasonadj;
+MERGE ODS_all ODS_totcarot ODS_alphacarot ODS_betacarot 
+ODS_lyc ODS_cryp ODS_lutzea ODS_retinol ODS_tocoph
+ODS_lutein ODS_zea
+ ;
+BY PSID;
+RUN;
+
+
+```
+
+
+```{r, results = "asis"}
+# display all plots created in SAS code above
+
+plot.names = 
+
+filelist <- c(paste0("SGPlot", c("", seq(1,39, 1))),
+              paste0("ResidualPlot", c("",seq(1,9,1))),
+              paste0("FitPlot", c("",seq(1,9,1))),
+              paste0("DiagnosticsPanel", c("", seq(1,9,1))),
+              paste0("CriterionPlot", c("", seq(1,9,1))) )
+              
+              
+
+for(i in filelist) {
+    cat(paste0("![](", i, ".png)"), "\n")
+    cat("\n\n\\pagebreak\n")
+}
+
+```
+

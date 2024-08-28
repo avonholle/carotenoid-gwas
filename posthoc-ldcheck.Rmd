@@ -1,0 +1,533 @@
+---
+title: "GWAS association analyses"
+author: "Ann Von Holle"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+    fig_caption: true
+editor_options: 
+  chunk_output_type: console
+---
+
+
+
+<!-- Sources: 
+  1. Marees AT, de Kluiver H, Stringer S, Vorspan F, Curis E, Marie‐Claire C, et al. A tutorial on conducting genome‐wide association studies: Quality control and statistical analysis. Int J Methods Psychiatr Res. 2018 Feb 27;27(2):e1608. 
+-->
+
+```{r, echo=F, warning=FALSE, message=FALSE, results='hide'}
+library(knitr)
+library(ggplot2)
+library(data.table)
+library(tidyverse)
+library(qqman)
+library(kableExtra)
+library(tidyr)
+library(dplyr)
+require(gtsummary) 
+```
+
+```{r, setup, include=FALSE, cache=FALSE}
+opts_chunk$set(echo=T, cache=F, message=F, warning=F, error=F,
+               eval=F) # only set eval=T if you need to re-run data
+```
+
+
+
+```{r, include=F, echo=F}
+# create a covar text file for plink below
+
+# Indicate working directory (with the slash at the end)
+
+wd <- "~/projects/carot_data/dat/"
+# wd = "W:/projects/carot_data/dat/"
+
+# From pca3.Rmd
+var<-"sample_justaims.all_phase3aims.eigenvec"
+
+
+# look at PCs from pca3.Rmd
+pca = read.table(file(paste0(wd, var)), header = F, stringsAsFactors=F)
+head(pca)
+colnames(pca) <- c("FID", "IID", paste('PC', c(1:20), sep = ''))
+head(pca)
+
+# select out IID in pca file from fam file 
+
+fam.info = read.table(file='~/projects/carot_data/dat/subsis1c8.fam', header=F)
+IID = fam.info[,2]
+head(IID)
+
+pca2 = pca[pca$IID %in% IID,]
+dim(pca2) # check
+head(pca2)
+
+# export to text file
+write.table(pca2,
+            file="~/projects/carot_data/dat/pcs.txt", 
+            row.names=FALSE,
+            quote=F,
+            col.names = T)
+
+```
+
+# GWAS for untransformed variables
+
+
+## Run plink for GWAS
+
+```{sh, eval=T}
+#!/bin/bash
+
+#SBATCH --partition=highmem
+#SBATCH --cpus-per-task=15
+#SBATCH --mail-user=ann.vonholle@nih.gov
+#SBATCH --mail-type=END, FAIL
+
+## alpha-carotene
+## see https://zzz.bwh.harvard.edu/plink/ld.shtml for more info and sample code
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --r2 \
+      --ld-snp rs6564851 \
+      --ld-window-kb 1000 \
+      --ld-window 99999 \
+      --ld-window-r2 0.5 \
+      --out ldcheck
+mv ldcheck.log logs/ldcheck.log
+```
+
+rsid in LD with rs6564851
+
+```{r, eval=T}
+
+txt.ld = read.csv(file="ldcheck.ld")
+kable(txt.ld)
+
+```
+
+```{sh, eval=T}
+# evaluate ld between two snps: rs6420424 and rs6564851
+
+# source: https://zzz.bwh.harvard.edu/plink/ld.shtml
+
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --ld rs6420424 rs6564851
+```
+
+
+<!-- NOTE: the following code was adapted from assoc1.Rmd -->
+
+First, get allele freqs from cases so I can use allele freqs from literature. need to use minor allele from cases, not non-cases, which is different.
+<!-- source: https://www.cog-genomics.org/plink/2.0/assoc -->
+
+```{sh, eval=T}
+#!/bin/bash
+
+#SBATCH --partition=highmem
+#SBATCH --cpus-per-task=15
+#SBATCH --mail-user=ann.vonholle@nih.gov
+#SBATCH --mail-type=END, FAIL
+
+plink2 --bfile ~/projects/carot_data/dat/casesis1c8 \
+      --snps rs6564851 \
+      --freq \
+      --out freqs.cases      
+mv freqs.cases.log logs/freqs.cases.log
+
+```
+
+```{sh, eval=T}
+#!/bin/bash
+
+#SBATCH --partition=highmem
+#SBATCH --cpus-per-task=15
+#SBATCH --mail-user=ann.vonholle@nih.gov
+#SBATCH --mail-type=END, FAIL
+
+## extra info on coding for recessive: https://www.cog-genomics.org/plink/2.0/assoc
+## adjlutzea
+plink2 --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --snps rs6564851 \
+      --read-freq freqs.cases.afreq \
+      --glm recessive hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name inv_adjlutzea \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --covar-variance-standardize \
+      --out recessive.lutzea      
+mv recessive.lutzea.log logs/recessive.lutzea.log
+
+
+## adjlutein
+plink2 --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --snps rs6564851 \
+      --read-freq freqs.cases.afreq \
+      --glm recessive hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name inv_adjlutein \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --covar-variance-standardize \
+      --out recessive.lutein    
+mv recessive.lutein.log logs/recessive.lutein.log
+
+
+## adjzea
+plink2 --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --snps rs6564851 \
+      --read-freq freqs.cases.afreq \
+      --glm recessive hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name inv_adjzea \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --covar-variance-standardize \
+      --out recessive.zea    
+mv recessive.zea.log logs/recessive.zea.log
+
+## adjbetacarot
+plink2 --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --snps rs6564851 \
+      --read-freq freqs.cases.afreq \
+      --glm recessive hide-covar \
+      --pheno ~/projects/carot_data/dat-pheno1.txt \
+      --pheno-name inv_adjbetacarot \
+      --covar  ~/projects/carot_data/dat/covar1.txt \
+      --covar-name AGE, BMI, PC1, PC2, PC3, PC4, PC5 \
+      --covar-variance-standardize \
+      --out recessive.betacarot
+mv recessive.betacarot.log logs/recessive.betacarot.log
+
+```
+
+
+
+
+
+## Data handling for plink output files
+<!-- Fields: CHROM  POS     ID      REF     ALT     A1      TEST    OBS_CT  BETA    SE      T_STAT  P -->
+
+```{r, eval=T}
+# Look at table of values for the variants that exceed genome-wide significance
+# 
+
+name.vars.log = c('recessive.lutzea.inv_adjlutzea.glm',
+                  'recessive.lutein.inv_adjlutein.glm',
+                  'recessive.zea.inv_adjzea.glm',
+                  'recessive.betacarot.inv_adjbetacarot.glm')
+names.vars = c(
+               "Lutein and Zeaxanthin",
+               "Lutein",
+               "Zeaxanthin",
+               "Beta carotene"
+               )
+
+
+wd = "~/projects/carot/"
+# wd = "W:/projects/carot/" # this is if I am running the script on the local drive
+
+# alternate way for tables of significant variants. 
+# append data sets and print off one table by phenotype
+
+get.dat = function(wd, var.info, vnames) {
+
+    # Get data and change format
+    # var.info = 'p2.inv.lutzea.case.cont.inv_adjlutzea.glm' # debug
+    data<-NULL
+    data <- read.table(file(paste0(wd, var.info, ".linear")), header = F, stringsAsFactors=F) # there is only one value so make header=F?
+    colnames(data) <- c("CHROM", "POS", "ID", "REF", "ALT", "A1", "TEST", "OBS_CT", "BETA", "SE", "T_STAT", "PVALUE")
+    #data = data[sample(nrow(data), 100),] # for debugging
+    
+    data$CHROM[which(data$CHROM=="X")]<-23
+    data$CHROM<-as.numeric(data$CHROM)
+    data$POS<-as.numeric(data$POS)
+    data$PVALUE<-as.numeric(as.character(data$PVALUE))
+
+    if(nrow(data)>0) {
+      data$pheno = paste(vnames)
+    }
+
+    return(data)
+
+}
+
+tables22 = mapply(get.dat,
+                 wd, name.vars.log, names.vars,
+                 SIMPLIFY=F)
+
+dat.models2.rec = tables22 %>% bind_rows() # unlist models to get consolidated data frame
+
+save(dat.models2.rec, file="posthoc-recessive.RData")
+
+#setwd("W:/projects/carot/")
+freqs = read.table("freqs.cases.afreq")
+
+kable(freqs,
+      col.names=c('CHROM',	'ID',	'REF',	'ALT',	'ALT_FREQS',	'OBS_CT'),
+      caption="freqs for minor allele set used for cases (from cases)")
+
+kable(dat.models2.rec,
+      caption="Recessive association for rs6564851 variant from primary sample.",
+      booktabs=T) %>%
+  collapse_rows(columns = 1) %>%
+  column_spec(1, width="8em") %>%
+  column_spec(2:13, width="6em") 
+
+```
+
+
+# Get phenotype counts
+# ======================================================
+# ======================================================
+
+
+## Look at phenotype values by variant genotypes
+
+
+
+First, get allele freqs from cases so I can use allele freqs from literature. need to use minor allele from cases, not non-cases, which is different.
+<!-- source: https://www.cog-genomics.org/plink/2.0/assoc -->
+
+```{sh, eval=T}
+#!/bin/bash
+
+#SBATCH --partition=highmem
+#SBATCH --cpus-per-task=15
+#SBATCH --mail-user=ann.vonholle@nih.gov
+#SBATCH --mail-type=END, FAIL
+
+plink2 --bfile ~/projects/carot_data/dat/casesis1c8 \
+      --snps rs6564851 rs6420424 \
+      --freq \
+      --out freqs.cases      
+mv freqs.cases.log logs/freqs.cases.log
+
+```
+
+```{sh, eval=T}
+#!/bin/bash
+
+#SBATCH --partition=highmem
+#SBATCH --cpus-per-task=15
+#SBATCH --mail-user=ann.vonholle@nih.gov
+#SBATCH --mail-type=END, FAIL
+
+plink2 --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --read-freq freqs.cases.afreq \
+      --covar ~/projects/carot_data/dat-pheno1.txt \
+      --covar-name inv_adjzea, inv_adjlutein, inv_adjlutzea, inv_adjcryp, inv_adjlyc, inv_adjbetacarot, inv_adjalphacarot, adjzea, adjlutein, adjlutzea, adjcryp, adjlyc, adjbetacarot, adjalphacarot \
+      --out onevar \
+      --prune \
+      --recode AD \
+      --snps rs6564851
+```
+
+```{r, eval=T}
+
+pheno.geno1 = read.table("onevar.raw", header = T, stringsAsFactors=F)
+head(pheno.geno1)
+
+pheno.geno2 = read.table("onevar.cov", header = T, stringsAsFactors=F,
+                         comment.char = " ")
+head(pheno.geno2)
+colnames(pheno.geno2)[1] = "IID"
+dim(pheno.geno1)
+dim(pheno.geno2)
+nrow(pheno.geno2[complete.cases(pheno.geno2),])
+
+pheno.geno = merge(pheno.geno1, 
+                   pheno.geno2,
+                   by="IID")
+
+# use quantile function in R to get quartiles (quantiles at 0, 25, 50 and 75)
+pheno.geno = pheno.geno %>%
+  mutate(q.lz = ntile(inv_adjlutzea, 4))
+
+# check
+table(pheno.geno$q.lz)
+
+```
+
+```{r, eval=T}
+
+# Median of Lutein/Zeaxanthine by quartile
+
+pheno.geno[complete.cases(pheno.geno),] %>%
+  group_by(q.lz) %>%
+  dplyr::summarize(median_lz = median(inv_adjlutzea),
+                   min_lz = min(inv_adjlutzea),
+                   max_lz = max(inv_adjlutzea)
+                   )
+```
+
+
+### Median Lutein/Zeaxanthin phenotype values by genotype
+
+```{r, eval=T}
+
+names(pheno.geno)
+
+# recode the genotype variable 
+levels(factor(pheno.geno$rs6564851_C))
+pheno.geno$rs6564851_C.f = factor(pheno.geno$rs6564851_C,
+                                  labels = c("AA", "AC", "CC"))
+
+pheno.geno.sub = pheno.geno %>% 
+  select(adjlutzea, adjlutein, adjzea, rs6564851_C.f)
+
+attr(pheno.geno.sub$adjlutein, "label") = "Lutein"
+attr(pheno.geno.sub$adjzea, "label") = "Zeanxanthine"
+attr(pheno.geno.sub$adjlutzea, "label") = "Lutein and Zeaxanthine"
+
+# source: https://www.danieldsjoberg.com/gtsummary/reference/tbl_summary.html
+t2 = tbl_summary(pheno.geno.sub,
+            by=rs6564851_C.f) %>%
+  add_n() %>%# add column with total number of non-missing observations
+ modify_spanning_header(all_stat_cols() ~ "**rs6564851 genotype**")
+
+t2
+
+# manually add p-values for additive tests
+tab.pvals = dat.models.check1[dat.models.check1$pheno %in% c("Lutein and Zeaxanthin",
+                                                 "Lutein",
+                                                 "Zeaxanthin"),
+                              c("SNP", "pheno", "BETA", "A1", "PVALUE")]
+
+kable(tab.pvals)
+
+# try https://www.danieldsjoberg.com/gtsummary/articles/rmarkdown.html
+
+
+# source: https://www.danieldsjoberg.com/gtsummary/reference/modify.html
+# source: https://www.danieldsjoberg.com/gtsummary/
+
+# save for tables-and-figures.Rmd file
+save(tab.pvals, pheno.geno.sub, file="pheno-table2.RData")
+
+```
+
+## rs6420424
+
+```{sh, eval=T}
+#!/bin/bash
+
+#SBATCH --partition=highmem
+#SBATCH --cpus-per-task=15
+#SBATCH --mail-user=ann.vonholle@nih.gov
+#SBATCH --mail-type=END, FAIL
+
+plink2 --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --read-freq freqs.cases.afreq \
+      --covar ~/projects/carot_data/dat-pheno1.txt \
+      --covar-name inv_adjzea, inv_adjlutein, inv_adjlutzea, inv_adjcryp, inv_adjlyc, inv_adjbetacarot, inv_adjalphacarot, adjzea, adjlutein, adjlutzea, adjcryp, adjlyc, adjbetacarot, adjalphacarot \
+      --out onevar2 \
+      --prune \
+      --recode AD \
+      --snps rs6420424
+```
+
+
+
+```{r, eval=T}
+
+pheno.geno1.2 = read.table("onevar2.raw", header = T, stringsAsFactors=F)
+head(pheno.geno1.2)
+
+pheno.geno2.2 = read.table("onevar2.cov", header = T, stringsAsFactors=F,
+                         comment.char = " ")
+head(pheno.geno2.2)
+colnames(pheno.geno2.2)[1] = "IID"
+dim(pheno.geno1.2)
+dim(pheno.geno2.2)
+nrow(pheno.geno2.2[complete.cases(pheno.geno2.2),])
+
+pheno.geno.2 = merge(pheno.geno1.2, 
+                   pheno.geno2.2,
+                   by="IID")
+
+# use quantile function in R to get quartiles (quantiles at 0, 25, 50 and 75)
+pheno.geno.2 = pheno.geno.2 %>%
+  mutate(q.lz = ntile(inv_adjlutzea, 4))
+
+# check
+table(pheno.geno.2$q.lz)
+
+```
+
+```{r, eval=T}
+
+# Median of Lutein/Zeaxanthine by quartile
+
+pheno.geno.2[complete.cases(pheno.geno.2),] %>%
+  group_by(q.lz) %>%
+  dplyr::summarize(median_lz = median(inv_adjlutzea),
+                   min_lz = min(inv_adjlutzea),
+                   max_lz = max(inv_adjlutzea)
+                   )
+```
+
+
+### Median Lutein/Zeaxanthin phenotype values by genotype
+
+```{r, eval=T}
+
+names(pheno.geno.2)
+# recode the genotype variable 
+levels(factor(pheno.geno.2$rs6420424_A)) # see ld info in first chunk for alleles
+pheno.geno.2$rs6420424_A.f = factor(pheno.geno.2$rs6420424_A,
+                                  labels = c("GG", "AG", "AA"))
+
+pheno.geno.sub.2 = pheno.geno.2 %>% 
+  select(adjlutzea, adjlutein, adjzea, rs6420424_A.f)
+
+attr(pheno.geno.sub.2$adjlutein, "label") = "Lutein"
+attr(pheno.geno.sub.2$adjzea, "label") = "Zeanxanthine"
+attr(pheno.geno.sub.2$adjlutzea, "label") = "Lutein and Zeaxanthine"
+
+# source: https://www.danieldsjoberg.com/gtsummary/reference/tbl_summary.html
+t2 = tbl_summary(pheno.geno.sub.2,
+            by=rs6420424_A.f) %>%
+  add_n() %>%# add column with total number of non-missing observations
+ modify_spanning_header(all_stat_cols() ~ "**rs6420424 genotype**")
+
+t2
+
+# manually add p-values for additive tests
+tab.pvals = dat.models.check1[dat.models.check1$pheno %in% c("Lutein and Zeaxanthin",
+                                                 "Lutein",
+                                                 "Zeaxanthin"),
+                              c("SNP", "pheno", "BETA", "A1", "PVALUE")]
+
+kable(tab.pvals)
+
+# try https://www.danieldsjoberg.com/gtsummary/articles/rmarkdown.html
+
+
+# source: https://www.danieldsjoberg.com/gtsummary/reference/modify.html
+# source: https://www.danieldsjoberg.com/gtsummary/
+
+# save for tables-and-figures.Rmd file
+save(tab.pvals, pheno.geno.sub, pheno.geno.sub.2, file="pheno-table2.RData")
+
+```
+
+
+```{sh, eval=T}
+#!/bin/bash
+
+#SBATCH --partition=highmem
+#SBATCH --cpus-per-task=15
+#SBATCH --mail-user=ann.vonholle@nih.gov
+#SBATCH --mail-type=END, FAIL
+
+plink --bfile ~/projects/carot_data/dat/subsis1c8 \
+      --snps rs6420424 \
+      --hardy
+      --out rs6420424hwe
+      
+```
+

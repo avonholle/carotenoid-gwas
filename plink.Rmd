@@ -1,0 +1,197 @@
+---
+title: "Initial data cleaning and analysis"
+author: "Ann Von Holle"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+editor_options: 
+  chunk_output_type: console
+---
+
+<!-- Sources: 
+  1) "notes for Mark to import GWAS data.txt" document from Katie to Mark
+-->
+
+
+
+```{r, echo=F, warning=FALSE, message=FALSE, results='hide'}
+library(knitr)
+library(ggplot2)
+library(data.table)
+library(tidyverse)
+```
+
+```{r, setup, include=FALSE, cache=FALSE}
+# https://bookdown.org/yihui/rmarkdown-cookbook/eng-bash.html
+opts_chunk$set(echo=T, cache=F, message=F, warning=F, error=F,
+               engine.opts = list(bash = "-l"))
+
+# NOTE: when running shell chunks, need to be very careful about spaces in the chunk
+```
+
+# Get SNP names from column headers of file with genotypes
+
+```{sh sh1}
+#!/bin/bash
+
+#SBATCH --partition=highmem
+#SBATCH --cpus-per-task=15
+#SBATCH --mail-user=ann.vonholle@nih.gov
+#SBATCH --mail-type=END, FAIL
+
+## create txt file of SNPnames with unix code based on first row of .txt file
+## Note: re-run if data is updated.
+
+head -n 1 ../../../../group/sister_2sister/Working/'Sister Study OncoArray'/sister_all.txt > SNPnames.txt
+
+## convert the row of snp names from a row to a column
+## source: https://superuser.com/questions/509844/how-can-i-replace-tab-delimited-data-with-line-breaks
+## replace tabs with newlines
+sed 's/\t/\r/g' SNPnames.txt > snpnames2.txt
+```
+
+# Create a .map file with snp names and OncoArray info
+
+```{r}
+# Create .map file based on code from 'GWAS data management.sas' file
+
+# 1. read in snp names from text file based on column headers of sister_all.txt
+# =======================
+snp.names = read.table("snpnames2.txt", sep = '\t', header = T)
+dim(snp.names)
+names(snp.names)[1] = "Name"
+
+# 2. read in OncoArray gene annotation file
+# Source of file: 10/20/2021 email from Katie with .txt file attached. Do not know the original source.
+# Note: I copied this file to /ddn/gs1/group/sister_2sister/Working/Sister Study OncoArray/
+# ============================
+onco = read.table("OncoArray-500K_B_GeneAnnotation_simple.txt" , sep = "\t", header=T)
+dim(onco)
+
+# 3. merge snp names from sister_all.txt with oncoarray: left merge including only those with entries from sister_all.txt file in the snp.names object
+# ===========================
+map = merge(snp.names, onco, all.x=T, by="Name")
+dim(map) # check that the number of rows matches that of snp.names object above
+
+# some additional data handling
+# ===========================
+map$distance = 0 # set distance to 0
+
+map$Chr = ifelse(map$Chr == " ", 0, map$Chr) # if Chr is blank set to 0
+map$Chr = replace(map$Chr, is.na(map$Chr), 0)
+
+map$MapInfo = replace(map$MapInfo, is.na(map$MapInfo), 0) # if map info missing set to 0
+
+head(map)
+summary(map)
+
+# export this file
+# ==============================
+
+write.table(map[c("Chr", "Name", "distance", "MapInfo")],
+            "../carot_data/sister_orig.map",
+            append = FALSE, sep = "\t",
+            quote=F,
+             col.names = F, 
+            row.names = FALSE)
+
+```
+
+# Convert .txt file to .ped file and subset genotype data to a smaller list of ids
+
+
+```{sh sh2}
+#!/bin/bash
+
+#SBATCH --partition=highmem
+#SBATCH --cpus-per-task=15
+#SBATCH --mail-user=ann.vonholle@nih.gov
+#SBATCH --mail-type=END, FAIL
+
+
+## ALTERNATE way to convert text file with snps and ids to bed file, ~/projects/carot_data/dat/sister1.bed for analysis.
+## 4/2022
+
+## text file of OncoArray Sister Study genetic data at:
+## /ddn/gs1/group/sister_2sister/Working/"Sister Study OncoArray"/sister_all.txt
+## NOTE: compound genotypes in .ped file work with Plink 1.9
+
+
+## remove first row with header info from txt file
+## ped file can't have that header info
+## Source: https://zzz.bwh.harvard.edu/plink/data.shtml
+## Source: https://www.baeldung.com/linux/remove-first-line-text-file
+
+
+tail -n +2 '/ddn/gs1/group/sister_2sister/Working/Sister Study OncoArray/sister_all.txt' > ~/projects/carot_data/sister_orig.ped
+
+## make ped file
+
+plink --file ~/projects/carot_data/sister_orig \
+      --no-fid \
+      --no-parents \
+      --no-sex \
+      --no-pheno \
+      --out ~/projects/carot_data/dat/sister1
+mv  ~/projects/carot_data/dat/sister1.log ~/projects/carot_data/dat/plink_log/sister1.log
+
+## use map file, sister_all.map, created above.
+
+## check that the number of rows in this file matches what I have in the ped file
+
+wc '/ddn/gs1/group/sister_2sister/Working/Sister Study OncoArray/sister_all.txt'
+
+## select out the people in the subcohort we want to use for this study (n=524)
+## Source: https://www.cog-genomics.org/plink/1.9/filter
+## Source of id file: U:\projects\carotenoids\sections\section1.Rmd
+
+plink --bfile ~/projects/carot_data/dat/sister1 \
+      --keep ~/projects/carot_data/ids-grpc-noheader.txt \
+      --make-bed \
+      --out ~/projects/carot_data/dat/subsis1nosex
+mv  ~/projects/carot_data/dat/subsis1nosex.log ~/projects/carot_data/dat/plink_log/subsis1nosex.log
+
+
+## update to all females
+## Source of id file: U:\projects\carotenoids\sections\section1.Rmd
+
+plink --bfile ~/projects/carot_data/dat/subsis1nosex \
+      --update-sex ~/projects/carot_data/ids-grpc-noheader-female.txt \
+      --make-bed \
+      --out ~/projects/carot_data/dat/subsis1
+mv  ~/projects/carot_data/dat/subsis1.log ~/projects/carot_data/dat/plink_log/subsis1a.log
+
+```
+
+```{sh sh3}
+#!/bin/bash
+
+#SBATCH --partition=highmem
+#SBATCH --cpus-per-task=15
+#SBATCH --mail-user=ann.vonholle@nih.gov
+#SBATCH --mail-type=END, FAIL
+
+## select out cases as replication sample (n=522)
+## Source: https://www.cog-genomics.org/plink/1.9/filter
+## Source of id file: U:\projects\carotenoids\sections\section1.Rmd
+
+plink --bfile ~/projects/carot_data/dat/sister1 \
+      --keep ~/projects/carot_data/ids-grpab-noheader.txt \
+      --make-bed \
+      --out ~/projects/carot_data/dat/casesis1nosex
+mv  ~/projects/carot_data/dat/casesis1nosex.log ~/projects/carot_data/dat/plink_log/casesis1nosex.log
+
+
+## update to all females
+## Source of id file: U:\projects\carotenoids\sections\section1.Rmd
+
+plink --bfile ~/projects/carot_data/dat/casesis1nosex \
+      --update-sex ~/projects/carot_data/ids-grpab-noheader-female.txt \
+      --make-bed \
+      --out ~/projects/carot_data/dat/casesis1
+mv  ~/projects/carot_data/dat/casesis1.log ~/projects/carot_data/dat/plink_log/casesis1a.log
+
+```
+

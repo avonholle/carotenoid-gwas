@@ -1,0 +1,447 @@
+---
+title: "Data cleaning for cases"
+author: "Ann Von Holle"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+editor_options: 
+  chunk_output_type: console
+---
+
+# Quality control and data cleaning
+
+<!-- Sources: 
+  1. Marees AT, de Kluiver H, Stringer S, Vorspan F, Curis E, Marie‐Claire C, et al. A tutorial on conducting genome‐wide association studies: Quality control and statistical analysis. Int J Methods Psychiatr Res. 2018 Feb 27;27(2):e1608. 
+-->
+
+```{r, echo=F, warning=FALSE, message=FALSE, results='hide'}
+library(knitr)
+library(ggplot2)
+library(data.table)
+library(tidyverse)
+
+```
+
+```{r, setup, include=FALSE, cache=FALSE}
+
+opts_chunk$set(echo=T, cache=F, message=F, warning=F, error=F)
+
+```
+
+
+Note: all scripts are obtained from '1_Main_script_QC_GWAS.txt' file.
+Source: https://github.com/MareesAT/GWA_tutorial/blob/master/README.md and based on the following article:
+
+Marees AT, de Kluiver H, Stringer S, Vorspan F, Curis E, Marie‐Claire C, et al. A tutorial on conducting genome‐wide association studies: Quality control and statistical analysis. Int J Methods Psychiatr Res. 2018 Feb 27;27(2):e1608.
+
+## Step 1. Investigate missingness per individual and per SNP and make histograms.
+
+```{r}
+# data from ~/projects/carot/plink.Rmd
+
+system("plink --bfile ~/projects/carot_data/dat/casesis1 --missing", intern=TRUE)
+
+# output: plink.imiss and plink.lmiss, these files show respectively the proportion of missing SNPs per individual and the proportion of missing individuals per SNP.
+```
+
+```{r, eval=F}
+
+# Generate plots to visualize the missingness results.
+system("Rscript --no-save ../carot_qc/GWA_tutorial/1_QC_GWAS/hist_miss.R", intern=TRUE)
+
+```
+
+
+```{r}
+
+# read data into R 
+indmiss<-read.table(file="plink.imiss", header=TRUE)
+snpmiss<-read.table(file="plink.lmiss", header=TRUE)
+
+
+hist(indmiss[,6],main="Histogram individual missingness") #selects column 6, names header of file
+
+hist(snpmiss[,5],main="Histogram SNP missingness")  
+
+```
+
+
+```{r}
+
+# Delete SNPs and individuals with high levels of missingness, explanation of this and all following steps can be found in box 1 and table 1 of the article mentioned in the comments of this script.
+# The following two QC commands will not remove any SNPs or individuals. However, it is good practice to start the QC with these non-stringent thresholds.  
+# Delete SNPs with missingness >0.2.
+system("plink --bfile ~/projects/carot_data/dat/casesis1 --geno 0.2 --make-bed --out ~/projects/carot_data/dat/casesis1c1", intern=T)
+
+# Delete individuals with missingness >0.2.
+system("plink --bfile ~/projects/carot_data/dat/casesis1c1 --mind 0.2 --make-bed --out ~/projects/carot_data/dat/casesis1c2", intern=T)
+
+# Delete SNPs with missingness >0.02.
+system("plink --bfile ~/projects/carot_data/dat/casesis1c2 --geno 0.02 --make-bed --out ~/projects/carot_data/dat/casesis1c3", intern=T)
+
+# Delete individuals with missingness >0.02.
+system("plink --bfile ~/projects/carot_data/dat/casesis1c3 --mind 0.02 --make-bed --out ~/projects/carot_data/dat/casesis1c4", intern=T)
+
+```
+
+
+## Step 2. Check for sex discrepancy.
+
+```{r}
+# Subjects who were a priori determined as females must have a F value of <0.2, and subjects who were a priori determined as males must have a F value >0.8. This F value is based on the X chromosome inbreeding (homozygosity) estimate.
+# Subjects who do not fulfil these requirements are flagged "PROBLEM" by PLINK.
+
+system("plink --bfile ~/projects/carot_data/dat/casesis1c4 --check-sex", intern=T)
+
+```
+
+```{r, eval=F}
+
+# Generate plots to visualize the sex-check results.
+system("Rscript --no-save ../carot_qc/GWA_tutorial/1_QC_GWAS/gender_check.R", intern=T)
+
+```
+
+
+```{r}
+gender <- read.table("plink.sexcheck", header=T,as.is=T)
+
+hist(gender[,6],main="Gender", xlab="F")
+
+#male=subset(gender, gender$PEDSEX==1)
+#hist(male[,6],main="Men",xlab="F")
+
+female=subset(gender, gender$PEDSEX==2)
+hist(female[,6],main="Women",xlab="F")
+
+```
+
+
+```{r}
+# 1) Delete individuals with sex discrepancy.
+system("grep 'PROBLEM' plink.sexcheck| awk '{print$1,$2}'> sex_discrepancy.txt", intern=T)
+
+# This command generates a list of individuals with the status “PROBLEM”.
+system("plink --bfile ~/projects/carot_data/dat/casesis1c4 --remove sex_discrepancy.txt --make-bed --out ~/projects/carot_data/dat/casesis1c5", intern=T) 
+# This command removes the list of individuals with the status “PROBLEM”.
+
+```
+
+```{r, eval=F}
+# 2) impute-sex.
+#plink --bfile HapMap_3_r3_5 --impute-sex --make-bed --out HapMap_3_r3_6
+# This imputes the sex based on the genotype information into your data set.
+```
+
+
+## Step 3. Generate a bfile with autosomal SNPs only and delete SNPs with a low minor allele frequency (MAF).
+
+```{r}
+
+# Select autosomal SNPs only (i.e., from chromosomes 1 to 22).
+# system("awk '{ if ($1 >= 1 && $1 <= 22) print $2 }' ~/projects/carot_data/dat/casesis1c5.bim > snp_1_22.txt", intern=T)
+# 
+# system("plink --bfile ~/projects/carot_data/dat/casesis1c5 --extract snp_1_22.txt --make-bed --out ~/projects/carot_data/dat/casesis1c6",
+#        intern=T)
+
+# bypass the sex check (original code above)
+
+system("awk '{ if ($1 >= 1 && $1 <= 22) print $2 }' ~/projects/carot_data/dat/casesis1c4.bim > snp_1_22.txt", intern=T)
+
+system("plink --bfile ~/projects/carot_data/dat/casesis1c4 --extract snp_1_22.txt --make-bed --out ~/projects/carot_data/dat/casesis1c6",
+       intern=T)
+
+
+```
+
+```{r}
+
+# Generate a plot of the MAF distribution.
+system("plink --bfile .~/projects/carot_data/dat/casesis1c6 --freq --out MAF_check", intern=T)
+
+```
+
+```{r, eval=F}
+
+system("Rscript --no-save ../carot_qc/GWA_tutorial/1_QC_GWAS/MAF_check.R", intern=T)
+
+```
+
+
+```{r}
+
+maf_freq <- read.table("MAF_check.frq", header =TRUE, as.is=T)
+
+hist(maf_freq[,5],main = "MAF distribution", xlab = "MAF")
+
+```
+
+```{r}
+
+# Remove SNPs with a low MAF frequency.
+# Note: if start with casesis1c5 data then NOT selecting only autosomal SNPs
+# if you start with casesis1c6 you remove non-autosomal SNPS
+# to do: do we expect non-autosomal SNPs to be associated with carotenoids?
+#system("plink --bfile ~/projects/carot_data/dat/casesis1c6 --maf 0.02 --make-bed --out ~/projects/carot_data/dat/casesis1c7", intern=T)
+
+system("plink --bfile ~/projects/carot_data/dat/casesis1c6 --maf 0.02 --make-bed --out ~/projects/carot_data/dat/casesis1c8", intern=T)
+# A conventional MAF threshold for a regular GWAS is between 0.01 or 0.05, depending on sample size.
+
+```
+
+
+## Step 4  Delete SNPs which are not in Hardy-Weinberg equilibrium (HWE).
+
+Check the distribution of HWE p-values of all SNPs.
+
+
+```{r, eval=F}
+
+system("plink --bfile ~/projects/carot_data/dat/casesis1c7 --hardy", intern=T)
+# Selecting SNPs with HWE p-value below 0.00001, required for one of the two plot generated by the next Rscript, allows to zoom in on strongly deviating SNPs. 
+
+system("awk '{ if ($9 <0.00001) print $0 }' plink.hwe>plinkzoomhwe.hwe", intern=T)
+
+```
+
+```{r, eval=F}
+system("Rscript --no-save ../carot_qc/GWA_tutorial/1_QC_GWAS/hwe.R", intern=T)
+```
+
+```{r, eval=F}
+
+hwe<-read.table (file="plink.hwe", header=TRUE)
+hist(hwe[,9],main="Histogram HWE")
+
+hwe_zoom<-read.table (file="plinkzoomhwe.hwe", header=TRUE)
+hist(hwe_zoom[,9],main="Histogram HWE: strongly deviating SNPs only")
+
+```
+
+```{r, eval=F}
+
+# remove this step per manuscript comments from CRW.
+
+# By default the --hwe option in plink only filters for controls.
+# Therefore, we use two steps, first we use a stringent HWE threshold for controls, followed by a less stringent threshold for the case data.
+system("plink --bfile ~/projects/carot_data/dat/casesis1c7 --hwe 1e-6 --make-bed --out ../carot_data/hwe_filter_step1", intern=T)
+
+# The HWE threshold for the cases filters out only SNPs which deviate extremely from HWE. 
+# This second HWE step only focuses on cases because in the controls all SNPs with a HWE p-value < hwe 1e-6 were already removed
+system("plink --bfile ../carot_data/hwe_filter_step1 --hwe 1e-10 --hwe-all --make-bed --out ~/projects/carot_data/dat/casesis1c8", intern=T)
+
+# Theoretical background for this step is given in our accompanying article: https://www.ncbi.nlm.nih.gov/pubmed/29484742 .
+
+```
+
+## Step 4a. Extracting data for variants common in both file sets
+
+<!-- Source: https://martha-labbook.netlify.app/posts/extracting-data-for-variants-common-in-both-file-sets/ -->
+<!-- NOTE: this was first tested out in the intersect.Rmd file. -->
+
+```{sh}
+#!/bin/bash
+
+#SBATCH --partition=highmem
+#SBATCH --cpus-per-task=15
+#SBATCH --mail-user=ann.vonholle@nih.gov
+#SBATCH --mail-type=END, FAIL
+
+## Extract SNP IDs from both .bim files and sort them numerically.
+
+awk '{print $2}' ~/projects/carot_data/dat/subsis1c8.bim | sort > ~/projects/carot_data/dat/snp-sub-sorted.txt
+
+awk '{print $2}' ~/projects/carot_data/dat/casesis1c8.bim | sort > ~/projects/carot_data/dat/snp-case-sorted.txt
+
+## Find and extract the IDs common in both files
+
+comm -12 ~/projects/carot_data/dat/snp-sub-sorted.txt ~/projects/carot_data/dat/snp-case-sorted.txt > ~/projects/carot_data/dat/intersecting_snps.txt
+
+## find out number of overlapping snps
+wc -l ~/projects/carot_data/dat/snp-sub-sorted.txt
+wc -l ~/projects/carot_data/dat/snp-case-sorted.txt
+wc -l ~/projects/carot_data/dat/intersecting_snps.txt
+
+## Extract data using intersecting_snps.txt from origninal file sets
+plink --bfile ~/projects/carot_data/dat/casesis1c8 --extract ~/projects/carot_data/dat/intersecting_snps.txt --make-bed --out  ~/projects/carot_data/dat/casesis1c8_intersect
+
+```
+
+
+## Step 5. Generate a plot of the distribution of the heterozygosity rate of your subjects.
+
+
+And remove individuals with a heterozygosity rate deviating more than 3 sd from the mean.
+
+Checks for heterozygosity are performed on a set of SNPs which are not highly correlated.
+
+Therefore, to generate a list of non-(highly)correlated SNPs, we exclude high inversion regions (inversion.txt [High LD regions]) and prune the SNPs using the command --indep-pairwise’.
+
+The parameters ‘50 5 0.2’ stand respectively for: the window size, the number of SNPs to shift the window at each step, and the multiple correlation coefficient for a SNP being regressed on all other SNPs simultaneously.
+
+```{r}
+
+system("plink --bfile ~/projects/carot_data/dat/casesis1c8 --exclude ../carot_qc/GWA_tutorial/1_QC_GWAS/inversion.txt --range --indep-pairwise 50 5 0.2 --out ../carot_data/indepSNP", 
+       intern=T)
+# Note, don't delete the file indepSNP.prune.in, we will use this file in later steps of the tutorial.
+
+system("plink --bfile ~/projects/carot_data/dat/casesis1c8 --extract ../carot_data/indepSNP.prune.in --het --out ../carot_data/R_check", intern=T)
+# This file contains your pruned data set.
+```
+
+```{r,eval=F}
+
+# Plot of the heterozygosity rate distribution
+system("Rscript --no-save ../carot_qc/GWA_tutorial/1_QC_GWAS/check_heterozygosity_rate.R")
+
+# The following code generates a list of individuals who deviate more than 3 standard deviations from the heterozygosity rate mean.
+# For data manipulation we recommend using UNIX. However, when performing statistical calculations R might be more convenient, hence the use of the Rscript for this step:
+system("Rscript --no-save ../carot_qc/GWA_tutorial/1_QC_GWAS/heterozygosity_outliers_list.R")
+
+```
+
+```{r}
+het <- read.table("../carot_data/R_check.het", head=TRUE)
+het$HET_RATE = (het$"N.NM." - het$"O.HOM.")/het$"N.NM."
+hist(het$HET_RATE, xlab="Heterozygosity Rate", ylab="Frequency", main= "Heterozygosity Rate")
+
+```
+
+```{r}
+het <- read.table("../carot_data/R_check.het", head=TRUE)
+het$HET_RATE = (het$"N.NM." - het$"O.HOM.")/het$"N.NM."
+het_fail = subset(het, (het$HET_RATE < mean(het$HET_RATE)-3*sd(het$HET_RATE)) | (het$HET_RATE > mean(het$HET_RATE)+3*sd(het$HET_RATE)));
+het_fail$HET_DST = (het_fail$HET_RATE-mean(het$HET_RATE))/sd(het$HET_RATE);
+write.table(het_fail, "fail-het-qc.txt", row.names=FALSE)
+
+```
+
+
+```{r}
+
+# Output of the command above: fail-het-qc.txt .
+# When using our example data/the HapMap data this list contains 2 individuals (i.e., two individuals have a heterozygosity rate deviating more than 3 SD's from the mean).
+# Adapt this file to make it compatible for PLINK, by removing all quotation marks from the file and selecting only the first two columns.
+
+system("sed 's/\"// g' fail-het-qc.txt | awk '{print$1, $2}'> het_fail_ind.txt", intern=T)
+
+# Remove heterozygosity rate outliers.
+system("plink --bfile ~/projects/carot_data/dat/casesis1c8 --remove het_fail_ind.txt --make-bed --out ~/projects/carot_data/dat/casesis1c9",
+intern=T)
+
+```
+
+
+## Step 6. It is essential to check datasets you analyse for cryptic relatedness.
+
+Assuming a random population sample we are going to exclude all individuals above the pihat threshold of 0.2 in this tutorial.
+
+```{r}
+
+# Check for relationships between individuals with a pihat > 0.2.
+
+system("plink --bfile ~/projects/carot_data/dat/casesis1c9 --extract ../carot_qc/indepSNP.prune.in --genome --min 0.2 --out ../carot_qc/pihat_min0.2", intern=T)
+
+```
+
+No parent-offspring pairs in this data set. So no data set generated.
+
+```{r, eval=F}
+# The HapMap dataset is known to contain parent-offspring relations. 
+# The following commands will visualize specifically these parent-offspring relations, using the z values. 
+system("awk '{ if ($8 >0.9) print $0 }' ../carot_qc/pihat_min0.2.genome>../carot_qc/zoom_pihat.genome", intern=T)
+
+```
+
+```{r, eval=F}
+# Generate a plot to assess the type of relationship.
+system("Rscript --no-save ../carot_qc/GWA_tutorial/1_QC_GWAS/Relatedness.R", intern=T)
+
+```
+
+```{r, eval=F}
+
+relatedness = read.table("../carot_qc/pihat_min0.2.genome", header=T)
+par(pch=16, cex=1)
+with(relatedness,plot(Z0,Z1, xlim=c(0,1), ylim=c(0,1), type="n"))
+with(subset(relatedness,RT=="PO") , points(Z0,Z1,col=4))
+with(subset(relatedness,RT=="UN") , points(Z0,Z1,col=3))
+legend(1,1, xjust=1, yjust=1, legend=levels(relatedness$RT), pch=16, col=c(4,3))
+
+relatedness_zoom = read.table("../carot_qc/zoom_pihat.genome", header=T)
+par(pch=16, cex=1)
+with(relatedness_zoom,plot(Z0,Z1, xlim=c(0,0.02), ylim=c(0.98,1), type="n"))
+with(subset(relatedness_zoom,RT=="PO") , points(Z0,Z1,col=4))
+with(subset(relatedness_zoom,RT=="UN") , points(Z0,Z1,col=3))
+legend(0.02,1, xjust=1, yjust=1, legend=levels(relatedness$RT), pch=16, col=c(4,3))
+
+relatedness = read.table("../carot_qc/pihat_min0.2.genome", header=T)
+hist(relatedness[,10],main="Histogram relatedness", xlab= "Pihat")  
+
+```
+
+
+The generated plots show a considerable amount of related individuals (explentation plot; PO = parent-offspring, UN = unrelated individuals) in the Hapmap data, this is expected since the dataset was constructed as such.
+
+Normally, family based data should be analyzed using specific family based methods. In this tutorial, for demonstrative purposes, we treat the relatedness as cryptic relatedness in a random population sample.
+
+In this tutorial, we aim to remove all 'relatedness' from our dataset.
+
+To demonstrate that the majority of the relatedness was due to parent-offspring we only include founders (individuals without parents in the dataset).
+
+```{r}
+
+system("plink --bfile ~/projects/carot_data/dat/casesis1c9 --filter-founders --make-bed --out ~/projects/carot_data/dat/casesis1c10", 
+       intern=T)
+
+```
+
+
+```{r}
+# Now we will look again for individuals with a pihat >0.2.
+system("plink --bfile ~/projects/carot_data/dat/casesis1c10 --extract ../carot_qc/indepSNP.prune.in --genome --min 0.2 --out ../carot_qc/pihat_min0.2_in_founders",
+       intern=T)
+
+```
+
+The file 'pihat_min0.2_in_founders.genome' shows that, after exclusion of all non-founders, only 1 individual pair with a pihat greater than 0.2 remains in the HapMap data.
+
+This is likely to be a full sib or DZ twin pair based on the Z values. Noteworthy, they were not given the same family identity (FID) in the HapMap data.
+
+```{r}
+#For each pair of 'related' individuals with a pihat > 0.2, we recommend to remove the individual with the lowest call rate. 
+
+system("plink --bfile ~/projects/carot_data/dat/casesis1c10 --missing", intern=T)
+
+```
+
+
+```{r, eval=F}
+# Use an UNIX text editor (e.g., vi(m) ) to check which individual has the highest call rate in the 'related pair'. 
+
+# Generate a list of FID and IID of the individual(s) with a Pihat above 0.2, to check who had the lower call rate of the pair.
+# In our dataset the individual 13291  NA07045 had the lower call rate.
+vi 0.2_low_call_rate_pihat.txt
+i 
+13291  NA07045
+# Press esc on keyboard!
+:x
+# Press enter on keyboard
+# In case of multiple 'related' pairs, the list generated above can be extended using the same method as for our lone 'related' pair.
+
+# Delete the individuals with the lowest call rate in 'related' pairs with a pihat > 0.2 
+plink --bfile HapMap_3_r3_11 --remove 0.2_low_call_rate_pihat.txt --make-bed --out HapMap_3_r3_12
+
+```
+
+```{r}
+# CONGRATULATIONS!! You've just succesfully completed the first tutorial! You are now able to conduct a proper genetic QC. 
+
+# For the next tutorial, using the script: 2_Main_script_MDS.txt, you need the following files:
+# - The bfile HapMap_3_r3_12 (i.e., HapMap_3_r3_12.fam,HapMap_3_r3_12.bed, and HapMap_3_r3_12.bim
+# - indepSNP.prune.in
+```
+
+

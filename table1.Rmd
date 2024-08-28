@@ -1,0 +1,292 @@
+---
+title: "Descriptive Statistics"
+output:
+  html_document: default
+  pdf_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup1, include=FALSE}
+
+knitr::opts_chunk$set(echo = F,
+                      eval=T, # set to T if you need to re-run with new data
+                      results = "hide", 
+                      message = F,
+                      warning = F)
+
+```
+
+
+
+```{r, include=F, eval=T}
+
+# bring in packages
+require(knitr)
+require(haven)
+require(tableone)
+require(ggplot2)
+require(kableExtra)
+require(dplyr)
+require(gtsummary) 
+require(corrplot)
+require(Hmisc)
+
+```
+
+
+```{r, eval=F}
+# only re-run if new data.
+
+# Source: data-cleaning-SAS.Rmd
+
+df1 =  read_sas(data_file="../data/ods_all.sas7bdat",
+                 catalog_file = "../../Sister Study/formats-subset/sisformats.sas7bcat")
+
+save(df1, file="carotdat.RData")
+
+```
+
+
+```{r, eval=T}
+
+load(file="carotdat.RData") # df1
+
+names(df1)[grepl("ID", names(df1))] # variables with id in them
+names(df1)[grepl("Sample", names(df1))] # variables with sample in them
+names(df1)[grepl("SE_RACE_ETH", names(df1))] # variables with id in them
+names(df1)[grepl("Case", names(df1))] # variables with Case in them
+names(df1)[grepl("subcohort", names(df1))] # variables with subcohort in them
+names(df1)[grepl("Subcohort", names(df1))] # variables with subcohort in them
+names(df1)[grepl("cohort", names(df1))] # variables with cohort in them
+
+```
+
+
+
+```{r, eval=T}
+
+adj.vars = names(df1)[grepl("adj", names(df1))][3:12]; adj.vars
+
+unadj.vars = substr(adj.vars, 4, nchar(adj.vars)); unadj.vars # note: no lutein or zeaxanthine w/o adj
+unadj.vars = unadj.vars[1:(length(unadj.vars)-2)]
+
+grp.vars = names(df1)[grepl("Sample", names(df1))][6:9]; grp.vars
+onco.vars = names(df1)[grepl("Onco", names(df1))]; onco.vars
+
+# checking vars in data frame
+vars.zea = names(df1)[grepl("zea", names(df1))]; vars.zea
+vars.lut = names(df1)[grepl("lut", names(df1))]; vars.lut
+
+sapply(df1[vars.lut], function(x) mean(x, na.rm=T))
+
+
+```
+
+
+
+```{r, eval=T}
+
+# names(df1[grep("FU_BCInvD_Event", names(df1))])
+
+df1.sub = df1[,c(unadj.vars, adj.vars, grp.vars, 'EX_BMI_final', 'Blood_Draw_AgeExact', 'SE_RACE_ETH', 'OncoArray_ONC_ID', 'FU_BCInvD_Event', 'HH_PSID', 'PSID')]
+
+summary(df1.sub)
+
+# combine group A and group B as replication sample and group c as primary analytic sample
+
+names(df1.sub)
+table(df1.sub$SIS370_Sample_GrpA)
+table(df1.sub$SIS370_Sample_GrpC)
+
+head(df1.sub[,c("SIS370_Sample_GrpA",
+                "SIS370_Sample_GrpB",
+                "SIS370_Sample_GrpC")])
+dim(df1.sub)
+
+#| SIS370_Sample_GrpB==1
+
+table(df1.sub$SIS370_Sample_GrpA, useNA = "always")
+
+# replace missing values for sample variable to 0
+# source: https://stackoverflow.com/questions/8161836/how-do-i-replace-na-values-with-zeros-in-an-r-dataframe
+df1.sub2 = df1.sub %>%
+  mutate_at(vars(SIS370_Sample_GrpA,
+                 SIS370_Sample_GrpB,
+                 SIS370_Sample_GrpC), 
+            ~replace(., is.na(.), 0)) %>%
+  mutate(sample = ifelse(SIS370_Sample_GrpA==1 | SIS370_Sample_GrpB==1, 0,
+                         ifelse(SIS370_Sample_GrpC==1, 1, NA)))
+
+table(df1.sub2$SIS370_Sample_GrpA) # check
+table(df1.sub2$sample)
+
+levels(factor(df1.sub2$sample))
+
+df1.sub2$sample = factor(df1.sub2$sample,
+                        labels = c("Cases",
+                                   'Primary random sample'))
+
+
+# take out missing carotenoid value
+#df1.sub2 = df1.sub2[complete.cases(df1.sub2[c(adj.vars, 'sample')]),]
+
+table(df1.sub2$sample)
+
+
+```
+
+
+```{r, eval=T}
+
+# handle data for table 1
+df2.sub = df1.sub2[c(adj.vars, 
+                    'EX_BMI_final', 'Blood_Draw_AgeExact', 'SE_RACE_ETH',
+                    'sample', 'OncoArray_ONC_ID', 'FU_BCInvD_Event', 'HH_PSID', 'PSID')]
+
+attributes(df2.sub$EX_BMI_final)$label = "BMI, kg/m2"
+attributes(df2.sub$Blood_Draw_AgeExact)$label = "Age (years)"
+attributes(df2.sub$SE_RACE_ETH)$label = "Race/ethnicity"
+
+df2.sub$SE_RACE_ETH = as_factor(df2.sub$SE_RACE_ETH)
+
+names(df2.sub[adj.vars])
+
+# adjusted vars
+colnames(df2.sub)[names(df2.sub) %in% adj.vars] = c("Total carotenoids",
+                             "Alpha carotene",
+                             "Beta Carotene",
+                             "Lycopene",
+                             "Cryptoxanthine",
+                             "Lutzein",
+                             "Retinol",
+                             "Tocopherol",
+                             "Lutein",
+                             "Zeaxanthine")
+names(df2.sub)
+
+```
+
+```{r}
+# get ids used in gwas from .fam files created in W:\projects\carot\clean.Rmd and located in W:\projects\carot_data\dat\ folder
+
+ids.primary = read.table(file="W:\\projects\\carot_data\\dat\\subsis1c8.fam")$V2
+head(ids.primary)
+length(ids.primary) # 513
+length(unique(ids.primary)) # 513
+
+ids.rep = read.table(file="W:\\projects\\carot_data\\dat\\casesis1c8.fam")$V1
+head(ids.rep)
+length(ids.rep) # 400
+
+# get phenotype values based on onco array ids from final plink data sets
+df2.sub.obs1 = df2.sub[df2.sub$OncoArray_ONC_ID %in% c(ids.primary),]
+dim(df2.sub.obs1)
+df2.sub.obs1$sample="Primary"
+
+df2.sub.obs2 = df2.sub[df2.sub$OncoArray_ONC_ID %in% c(ids.rep),]
+dim(df2.sub.obs2)
+df2.sub.obs2$sample="Replication"
+
+df2.sub.obs = rbind.data.frame(df2.sub.obs1, 
+                               df2.sub.obs2)
+table(df2.sub.obs$sample)
+
+# per internal reviewer request (4/19, Farida), get number of cases in random sample at baseline
+with(df2.sub.obs, table(sample, FU_BCInvD_Event))
+
+# per internal reviewer, determine if there is an issue with relatedness.
+prim.sample = df2.sub.obs[df2.sub.obs$sample=="Primary",] 
+
+check.fam = as.data.frame(table(prim.sample$HH_PSID))
+head(check.fam)
+check.fam.gt1 = check.fam[check.fam$Freq>1,]
+prim.sample[prim.sample$HH_PSID %in% check.fam.gt1$Var1,]$PSID  #2 people who come from same family.
+
+table(df2.sub.obs$sample)
+
+# are there any id overlap between samples?
+ids1 = unique(df2.sub.obs[which(df2.sub.obs$sample=="Primary"),]$PSID)
+ids2 = unique(df2.sub.obs[which(df2.sub.obs$sample=="Replication"),]$PSID)
+
+length(ids1)
+length(ids2)
+
+# yes
+ids1[ids1 %in% ids2]
+
+```
+
+
+```{r}
+df2.sub.obs = df2.sub.obs %>%
+  select(-OncoArray_ONC_ID, -FU_BCInvD_Event)
+
+names(df2.sub.obs)
+
+```
+
+
+```{r, eval=T, results='markup'}
+
+df2.sub.obs %>% 
+  tbl_summary(by=sample)
+
+# tbl_summary(data=df2.sub.obs,
+#             by=sample)
+
+```
+
+
+```{r, eval=T}
+
+# Do a heat map of associations between the five primary phenotypes
+
+dim(df2.sub)
+table(df2.sub$sample)
+
+df3.sub = df2.sub[df2.sub$sample=="Primary random sample",
+                  c("Alpha carotene",
+                    "Beta Carotene",
+                    "Lycopene",
+                    "Cryptoxanthine",
+                    "Lutzein")]
+colnames(df3.sub)
+colnames(df3.sub)[5] = "Lutein and zeanxathin"
+dim(df3.sub)
+
+names(df3.sub)
+
+
+# source: https://stackoverflow.com/questions/68821741/correlation-plot-corrplot-heatmap-where-showing-significance-level-but-row-and
+Mp = rcorr(as.matrix(df3.sub))
+
+cp = corrplot(Mp$r, method="color", addCoef.col="black",
+         diag = FALSE, type = 'upper',
+         tl.col='black')
+cp
+
+# save the correlation heatmap and table 1 data for W:\projects\carot\tables-and-figures.Rmd
+save(df2.sub.obs, Mp, file="table1.RData")
+
+```
+
+
+```{r}
+# Source: https://www.danieldsjoberg.com/gtsummary/articles/themes.html
+theme_gtsummary_journal(journal="jama")
+names(df2.sub.obs)[which(names(df2.sub.obs) %in% c("SE_RACE_ETH"))] = "Race/ethnicity"
+
+df2.sub.obs$`Race/ethnicity` = factor(df2.sub.obs$`Race/ethnicity`,
+                                      labels = c("Non-Hispanic white",
+                                                 "Non-Hispanic Black",
+                                                 "Hispanic",
+                                                 "Other"))
+
+tbl_summary(data=df2.sub.obs[,names(df2.sub.obs)[!(names(df2.sub.obs) %in% c("Retinol", "Tocopherol"))]],
+            by=sample,
+            missing="no") %>%
+  modify_caption("**Descriptive statistics by sample**") 
+
+```
+

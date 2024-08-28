@@ -1,0 +1,272 @@
+---
+title: "PCA visualization on the combined sample (cases) and 1000 genome data"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# PCA data visualization
+
+<!-- Note: Source of this script is https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8722024/ -->
+
+<!-- NOTE: not able to get R to recognize PCAviz even after I loaded so can't run this on server -->
+
+```{r, include=F}
+
+library(knitr)
+# Source: https://github.com/NovembreLab/PCAviz
+#install.packages("devtools")
+#devtools::install_github("NovembreLab/PCAviz", build_vignettes = F)
+
+# NOTE: For Linux server package install, you have to type in the following in R on server (after typing "R402" at prompt), instead of directly typing in "install.packages("devtools")
+# install.packages("devtools",repos="cran.r-project.org")
+#devtools::install_github("NovembreLab/PCAviz",build_vignettes = F)
+
+# load packages
+library(PCAviz)
+library(cowplot)
+library(ggplot2)
+
+```
+
+```{r setup, include=FALSE}
+
+opts_chunk$set(echo=T, cache=F, message=F, warning=F, error=F)
+
+```
+
+```{r, eval = TRUE, echo=TRUE, results='hide',warning=FALSE,message=FALSE, fig.height=10, fig.width=10, out.width = "100%", fig.cap="Pairwise plots of PC scores generated using the PCAviz package."}
+
+# Note: Source of this script is https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8722024/ 
+# Eigenvalue files are from pca3-case.Rmd
+
+prefix <- "case_justaims.all_phase3aims"
+nPCs <- 20
+
+# read in the eigenvectors, produced in PLINK
+#eigenvec <- read.table(paste0("~/projects/carot_data/dat/", paste(prefix, ".eigenvec", sep = "")), header = FALSE, skip=0, sep = ' ')
+eigenvec <- read.table(paste0("W:/projects/carot_data/dat/", 
+                              paste(prefix, ".eigenvec", sep = "")), 
+                       header = FALSE, skip=0, sep = ' ')
+rownames(eigenvec) <- eigenvec[,2]
+head(eigenvec)
+dim(eigenvec)
+
+eigenvec <- eigenvec[,c(2,3:ncol(eigenvec))]
+colnames(eigenvec) <- c("ID", paste('PC', c(1:20), sep = ''))
+head(eigenvec[400:430,], 30)
+tail(eigenvec)
+
+# Read in snp weightings matrix
+# snpeigs <- read.table(paste0("../carot_data/psout/",paste(prefix, ".snpeigs", sep = "")))
+# 
+# names(snpeigs) <- c("ID", "chr", "pos", 
+#                     paste("PC", (1:nPCs), sep = ""))
+# snpeigs$chr <- factor(snpeigs$chr)
+# rownames(snpeigs) <- snpeigs$ID
+# snpeigs <- snpeigs[, -1]
+
+
+# Note smartpca pushes the plink family and individual
+# ids together so we need to extract out the ids afresh
+#tmp <- unlist(sapply(as.character(PCA$ID), strsplit, ":"))
+#ids <- tmp[seq(2, length(tmp), by = 2)]
+#PCA$ID <- ids
+
+PCA <- eigenvec
+head(PCA)
+tail(PCA)
+dim(PCA)
+
+```
+
+
+```{r}
+
+p1 = ggplot(data=PCA, 
+       aes(x=PC1, y=PC2)) +
+  geom_point() +
+  theme_bw()
+p1
+
+p2 = ggplot(data=PCA, 
+       aes(x=PC2, y=PC3)) +
+  geom_point() +
+  theme_bw()
+p2
+
+p3 = ggplot(data=PCA, 
+       aes(x=PC3, y=PC4)) +
+  geom_point() +
+  theme_bw()
+p3
+
+p4 = ggplot(data=PCA, 
+       aes(x=PC4, y=PC5)) +
+  geom_point() +
+  theme_bw()
+p4
+
+plot_grid(p1, p2, p3, p4)
+
+
+```
+
+
+
+
+Add population info to plots
+
+```{r}
+
+# Read in population file
+
+#sample.info = read.csv("~/projects/carot_data/1000G/20130606_sample_info.csv")
+sample.info = read.csv("W:/projects/carot_data/1000G/20130606_sample_info.csv")
+head(sample.info)
+table(sample.info$Population)
+dim(sample.info)
+
+sample.info.2 = sample.info[,c(1,3,5)]
+names(sample.info.2) = c("ID", "Population", "Gender")
+head(sample.info.2)
+head(PCA)
+dim(PCA)
+head(PCA[500:510,]) # sample stops at 503
+
+# make sample id
+PCA$sample = c(rep(1,503), rep(0, nrow(PCA)-503))
+head(PCA[500:510,]) # sample stops at 503
+
+table(sample.info.2$Population, useNA = "always")
+
+merge.dat = merge(sample.info.2, PCA, all.y=T, by="ID")
+dim(merge.dat)
+table(merge.dat$Population, useNA = "always")
+
+merge.dat2 = merge.dat[!(is.na(merge.dat$PC1)),]
+head(merge.dat2)
+tail(merge.dat2)
+dim(merge.dat2)
+
+# add sample info to population variable
+
+
+table(merge.dat2$Population, useNA = "always")
+table(merge.dat2$Population)
+
+merge.dat2 = within(merge.dat2, {
+  Population2 = ifelse(sample==1, "Sample", Population)
+  superp = ifelse(Population2 %in% c('FIN', 'CEU', 'IBS', 'TSI'), "EUR",
+                  ifelse(Population2 %in% c("Sample"), "Sample", "AFR"))
+})
+
+head(merge.dat2)
+table(merge.dat2$Population2, useNA = "always")
+table(merge.dat2$superp, useNA = "always")
+
+sample.dat = merge.dat2[which(merge.dat2$Population2=="Sample"),]
+dim(sample.dat)
+
+merge.dat3 = merge.dat2[!(is.na(merge.dat2$Population2)),]
+dim(merge.dat3)
+table(merge.dat3$Population2)
+
+```
+
+```{r}
+# output ids with European and African superpopulation codes
+
+head(sample.info)
+
+ids.eur.afr = sample.info[sample.info$Population %in% c('FIN', 'CEU', 'IBS', 'TSI',
+                                                            'ACB', 'GWW', 'ASW', 'YRI',
+                                                            'LWK', 'GWF', 'GWD', 'MSL', 
+                                                            'ESN', 'GWJ'),c(1,2)] # keep id and family id 
+head(ids.eur.afr)
+ids.eur.afr$Family.ID=0
+dim(ids.eur.afr) # 1580
+
+# family id should be in first column, ind id in 2nd column
+head(ids.eur.afr[c(2,1)])
+
+write.table(ids.eur.afr[c(2,1)], 
+            file = 'W:\\projects\\carot_data\\eur-afr-ids.txt',
+            sep = ' ', row.names=F, col.names=F, quote=F)
+
+```
+
+
+```{r}
+
+# 1 and 2
+# ===========
+p1.2 = ggplot(data=merge.dat3,
+              aes(x=PC1, y=PC2, colour=Population2)) +
+  geom_point() +
+  theme_bw()
+p1.2
+
+p1.2.sample = ggplot(data=merge.dat3,
+              aes(x=PC1, y=PC2, colour=superp)) +
+  geom_point() +
+  theme_bw()
+p1.2.sample
+
+# 2 and 3
+# ===========
+p2.2 = ggplot(data=merge.dat3,
+              aes(x=PC2, y=PC3, colour=Population2)) +
+  geom_point() +
+  theme_bw()
+p2.2
+
+p2.2.sample = ggplot(data=merge.dat3,
+              aes(x=PC2, y=PC3, colour=superp)) +
+  geom_point() +
+  theme_bw()
+p2.2.sample
+
+
+# 3 and 4
+# ===========
+
+p3.2 = ggplot(data=merge.dat3,
+              aes(x=PC3, y=PC4, colour=Population2)) +
+  geom_point() +
+  theme_bw()
+p3.2
+
+
+p3.2.sample = ggplot(data=merge.dat3,
+              aes(x=PC3, y=PC4, colour=superp)) +
+  geom_point() +
+  theme_bw()
+p3.2.sample
+
+
+
+# 4 and 5
+# ===========
+
+p4.2 = ggplot(data=merge.dat3,
+              aes(x=PC4, y=PC5, colour=Population2)) +
+  geom_point() +
+  theme_bw()
+p4.2
+
+p4.2.sample = ggplot(data=merge.dat3,
+              aes(x=PC4, y=PC5, colour=superp)) +
+  geom_point() +
+  theme_bw()
+p4.2.sample
+
+
+plot_grid(p1.2,
+          p2.2,
+          p3.2,
+          p4.2,
+          ncol=2)
+
+
+```

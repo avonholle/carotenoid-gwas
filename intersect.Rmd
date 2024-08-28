@@ -1,0 +1,53 @@
+---
+title: "Data cleaning for cases"
+author: "Ann Von Holle"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+editor_options: 
+  chunk_output_type: console
+---
+
+Note: This work is an offshoot of cleancase.Rmd
+
+
+```{r, include=FALSE, cache=FALSE}
+
+opts_chunk$set(echo=T, cache=F, message=F, warning=F, error=F)
+
+```
+
+
+## Step 4a. Extracting data for variants common in both file sets
+
+<!-- Source: https://martha-labbook.netlify.app/posts/extracting-data-for-variants-common-in-both-file-sets/ -->
+
+```{sh}
+#!/bin/bash
+
+#SBATCH --partition=highmem
+#SBATCH --cpus-per-task=15
+#SBATCH --mail-user=ann.vonholle@nih.gov
+#SBATCH --mail-type=END, FAIL
+
+## Extract SNP IDs from both .bim files and sort them numerically.
+
+awk '{print $2}' ~/projects/carot_data/dat/subsis1c8.bim | sort > ~/projects/carot_data/dat/snp-sub-sorted.txt
+
+awk '{print $2}' ~/projects/carot_data/dat/casesis1c8.bim | sort > ~/projects/carot_data/dat/snp-case-sorted.txt
+
+## Find and extract the IDs common in both files
+
+comm -12 ~/projects/carot_data/dat/snp-sub-sorted.txt ~/projects/carot_data/dat/snp-case-sorted.txt > ~/projects/carot_data/dat/intersecting_snps.txt
+
+## find out number of overlapping snps
+wc -l snp-sub-sorted.txt
+wc -l snp-case-sorted.txt
+wc -l intersecting_snps.txt
+
+## Extract data using intersecting_snps.txt from origninal file sets
+plink --bfile casesis1c8 --extract intersecting_snps.txt --make-bed --out plink_output/casesis1c8_intersect
+
+```
