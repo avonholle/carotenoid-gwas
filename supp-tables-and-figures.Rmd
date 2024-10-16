@@ -79,7 +79,6 @@ require(flextable)
 
 \clearpage
 \newpage
-\center
 
 ```{r}
 # source: W:\projects\carot\assoc1.Rmd
@@ -182,7 +181,6 @@ kable(dat.models2.rec[c("pheno", "BETA", "SE", "PVALUE")], # "CHROM", "POS", "ID
 
 \clearpage
 \newpage
-\centering
 
 
 ```{r, eval=T}
@@ -214,7 +212,7 @@ kable(dat.models.case[c("pheno", "CHROM", "POS", "A1", "BETA", "SE", "PVALUE")],
 \blandscape
 
 
-```{r, fig.cap="Correlation heat map of five primary carotenoids"}
+```{r fig.align="center", fig.cap="Correlation heat map of five primary carotenoids"}
 
 # correlation heatmap plot from U:\projects\carotenoids\sections\table1.Rmd
 
@@ -232,7 +230,7 @@ corrplot(Mp$r, method="color", addCoef.col="black",
 \newpage
 
 
-```{r, fig.cap="Boxplot of Lutein and Zeaxanthin by rs6564851 genotype"}
+```{r fig.align="center", fig.cap="Boxplot of Lutein and Zeaxanthin by rs6564851 genotype"}
 
 
 # source: W:\projects\carot\assoc1.Rmd
@@ -268,7 +266,7 @@ ggsave(file="geno-box.png", width = 6, height = 6, dpi=300)
 <!-- NOTE: the figure below is from https://my.locuszoom.org/gwas/450584/region/?chrom=16&start=81014597&end=81514597 -->
 <!-- Data from the p2.inv.lutzea.cont file made in assoc1.Rmd -->
 
-```{r, fig.cap = "Regional association plot for variants rs6564851 and rs6420424"}
+```{r fig.align="center", fig.cap = "Regional association plot for variants rs6564851 and rs6420424"}
 #knitr::include_graphics("locuszoom20221130.png")
 
 knitr::include_graphics("locuszoom-20231218-update.png")
@@ -282,7 +280,7 @@ knitr::include_graphics("locuszoom-20231218-update.png")
 
 <!-- # Alpha-carotene -->
 
-```{r, fig.cap="Manhattan plot for alpha carotene, primary sample"}
+```{r fig.align="center", fig.cap="Manhattan plot for alpha carotene, primary sample"}
 knitr::include_graphics("Manhattan.inv.plot.alphacarot.cont.linear.png")
 ```
 
@@ -290,7 +288,7 @@ knitr::include_graphics("Manhattan.inv.plot.alphacarot.cont.linear.png")
 <!-- # Beta-carotene -->
 
 
-```{r, fig.cap="Manhattan plot for beta-carotene, primary sample"}
+```{r fig.align="center", fig.cap="Manhattan plot for beta-carotene, primary sample"}
 knitr::include_graphics("Manhattan.inv.plot.betacarot.cont.linear.png")
 ```
 
@@ -301,7 +299,7 @@ knitr::include_graphics("Manhattan.inv.plot.betacarot.cont.linear.png")
 <!-- # Lycopene -->
 
 
-```{r, fig.cap="Manhattan plot for lycopene, primary sample"}
+```{r fig.align="center", fig.cap="Manhattan plot for lycopene, primary sample"}
 knitr::include_graphics("Manhattan.inv.plot.lyc.cont.linear.png")
 ```
 
@@ -312,7 +310,7 @@ knitr::include_graphics("Manhattan.inv.plot.lyc.cont.linear.png")
 
 <!-- # Cryptoxanthin -->
 
-```{r, fig.cap="Manhattan plot for cryptoxanthin, primary sample"}
+```{r fig.align="center", fig.cap="Manhattan plot for cryptoxanthin, primary sample"}
 knitr::include_graphics("Manhattan.inv.plot.cryp.cont.linear.png")
 ```
 
@@ -323,7 +321,7 @@ knitr::include_graphics("Manhattan.inv.plot.cryp.cont.linear.png")
 <!-- # Lutein -->
 
 
-```{r, fig.cap="Manhattan plot for Lutein, primary sample"}
+```{r fig.align="center", fig.cap="Manhattan plot for Lutein, primary sample"}
 knitr::include_graphics("Manhattan.inv.plot.lutein.cont.linear.png")
 ```
 
@@ -333,7 +331,7 @@ knitr::include_graphics("Manhattan.inv.plot.lutein.cont.linear.png")
 
 <!-- # Zeanxanthin -->
 
-```{r, fig.cap="Manhattan plot for Zeaxanthin, primary sample"}
+```{r fig.align="center", fig.cap="Manhattan plot for Zeaxanthin, primary sample"}
 knitr::include_graphics("Manhattan.inv.plot.zea.cont.linear.png")
 ```
 
@@ -344,7 +342,7 @@ knitr::include_graphics("Manhattan.inv.plot.zea.cont.linear.png")
 <!-- # Alpha-carotene -->
 
 
-```{r, fig.cap="QQ plot for alpha carotene, primary sample"}
+```{r fig.align="center", fig.cap="QQ plot for alpha carotene, primary sample"}
 knitr::include_graphics("QQ.inv.plot.alphacarot.cont.linear.png")
 ```
 
@@ -355,7 +353,7 @@ knitr::include_graphics("QQ.inv.plot.alphacarot.cont.linear.png")
 <!-- # Beta-carotene -->
 
 
-```{r, fig.cap="QQ plot for beta-carotene, primary sample"}
+```{r fig.align="center", fig.cap="QQ plot for beta-carotene, primary sample"}
 knitr::include_graphics("QQ.inv.plot.betacarot.cont.linear.png")
 ```
 
@@ -367,7 +365,7 @@ knitr::include_graphics("QQ.inv.plot.betacarot.cont.linear.png")
 
 
 
-```{r, fig.cap="QQ plot for lycopene, primary sample"}
+```{r fig.align="center", fig.cap="QQ plot for lycopene, primary sample"}
 knitr::include_graphics("QQ.inv.plot.lyc.cont.linear.png")
 ```
 
@@ -378,7 +376,7 @@ knitr::include_graphics("QQ.inv.plot.lyc.cont.linear.png")
 <!-- # Cryptoxanthin -->
 
 
-```{r, fig.cap="QQ plot for cryptoxanthin, primary sample"}
+```{r fig.align="center", fig.cap="QQ plot for cryptoxanthin, primary sample"}
 knitr::include_graphics("QQ.inv.plot.cryp.cont.linear.png")
 ```
 
@@ -390,7 +388,7 @@ knitr::include_graphics("QQ.inv.plot.cryp.cont.linear.png")
 
 
 
-```{r, fig.cap="QQ plot for Lutein, primary sample"}
+```{r fig.align="center", fig.cap="QQ plot for Lutein, primary sample"}
 knitr::include_graphics("QQ.inv.plot.lutein.cont.linear.png")
 ```
 
@@ -401,7 +399,7 @@ knitr::include_graphics("QQ.inv.plot.lutein.cont.linear.png")
 <!-- # Zeanxanthin -->
 
 
-```{r, fig.cap="QQ plot for Zeaxanthin, primary sample"}
+```{r fig.align="center", fig.cap="QQ plot for Zeaxanthin, primary sample"}
 knitr::include_graphics("QQ.inv.plot.zea.cont.linear.png")
 ```
 
