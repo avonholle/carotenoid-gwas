@@ -1,25 +1,23 @@
 ---
-title: "Supplemental tables and figures"
+title: "Supplementary tables and figures"
 description: Summary of analyses
-output:
+output: 
   pdf_document:
     includes:
       in_header: preamble-latex-nobookdown.tex
-  html_document:
-    df_print: paged
-  word_document: default
-fig_caption: yes
-language:
-  label:
-    fig: Figure S
-linkcolor: blue
-citecolor: blue
+fig_caption: true
 always_allow_html: yes
-urlcolor: blue
 geometry: margin=1cm
-link-citations: yes
+bibliography: 2024update.bib
+editor_options: 
+  chunk_output_type: console
 ---
 
+```{r, include=FALSE}
+
+options(tinytex.verbose = TRUE)
+
+```
 
 
 ```{r, include=FALSE}
@@ -57,7 +55,7 @@ require(tidyr)
 require(ggplot2)
 require(gtsummary) # this table making package works better with haven objects
 require(stringr)
-
+require(dplyr)
 
 require(corrplot)
 require(Hmisc)
@@ -74,7 +72,6 @@ require(flextable)
 
 
 
-<div id="refs"></div>
 
 \beginsupplement
 
@@ -82,9 +79,9 @@ require(flextable)
 
 \clearpage
 \newpage
+\center
 
 ```{r}
-
 # source: W:\projects\carot\assoc1.Rmd
 
 load(file="pheno-table2.RData") # tab.pvals, pheno.geno.sub, pheno.geno.sub.2
@@ -93,6 +90,10 @@ load(file="p2-sig-models2.RData") # dat.models2
 
 load(file="posthoc-recessive.RData") # dat.models2.rec from posthoc-ldcheck.Rmd
 
+
+attr(pheno.geno.sub$adjlutein, "label") = "Lutein"
+attr(pheno.geno.sub$adjzea, "label") = "Zeanxanthin"
+attr(pheno.geno.sub$adjlutzea, "label") = "Lutein and Zeaxanthin"
 
 # source: https://www.danieldsjoberg.com/gtsummary/reference/tbl_summary.html
 t2 = tbl_summary(pheno.geno.sub,
@@ -112,13 +113,18 @@ t2
 
 ```{r}
 
+
+attr(pheno.geno.sub.2$adjlutein, "label") = "Lutein"
+attr(pheno.geno.sub.2$adjzea, "label") = "Zeanxanthin"
+attr(pheno.geno.sub.2$adjlutzea, "label") = "Lutein and Zeaxanthin"
+
 # source: https://www.danieldsjoberg.com/gtsummary/reference/tbl_summary.html
 t2.2 = tbl_summary(pheno.geno.sub.2,
             by=rs6420424_A.f) %>%
   add_n() %>% # add column with total number of non-missing observations
  modify_spanning_header(all_stat_cols() ~ "rs6420424 genotype") %>%
   modify_caption("Carotenoid characteristics by rs6420424 genotype") %>%
-  as_kable_extra(booktabs = TRUE,linesep = "")
+  as_kable_extra(booktabs = TRUE, linesep = "")
 
 t2.2
 ```
@@ -147,6 +153,7 @@ load(file="p2-sig-models-case.RData") # dat.models.case
 \newpage
 
 
+
 ```{r, eval=T}
 
 dat.models2$PVALUE = as.character(dat.models2$PVALUE)# change p-value so scientific notation shows up in kableextra
@@ -169,9 +176,13 @@ kable(dat.models2.rec[c("pheno", "BETA", "SE", "PVALUE")], # "CHROM", "POS", "ID
   column_spec(1, width="10em") %>%
   column_spec(2:3, width="5em") %>%
   column_spec(4, width="10em") %>%
-  kable_styling(full_width = F, position = "left")
+  kable_styling(full_width = F, position = "center")
 
 ```
+
+\clearpage
+\newpage
+\centering
 
 
 ```{r, eval=T}
@@ -190,7 +201,7 @@ kable(dat.models.case[c("pheno", "CHROM", "POS", "A1", "BETA", "SE", "PVALUE")],
   pack_rows(index = table(dat.models.case$ID)) %>% 
 #  column_spec(1, width="8em") %>%
 #  column_spec(2:8, width="5em") %>%
-  kable_styling(full_width = F, position = "left")
+  kable_styling(full_width = F, position = "center")
 
 
 
@@ -207,7 +218,8 @@ kable(dat.models.case[c("pheno", "CHROM", "POS", "A1", "BETA", "SE", "PVALUE")],
 
 # correlation heatmap plot from U:\projects\carotenoids\sections\table1.Rmd
 
-load(file="U:/projects/carotenoids/sections/table1.RData") # Mp from U:\projects\carotenoids\sections\table1.Rmd
+#load(file="U:/projects/carotenoids/sections/table1.RData") # Mp from U:\projects\carotenoids\sections\table1.Rmd
+load("table1.RData")
 
 corrplot(Mp$r, method="color", addCoef.col="black",
          diag = FALSE, type = 'upper',
@@ -215,6 +227,9 @@ corrplot(Mp$r, method="color", addCoef.col="black",
 ```
 
 
+
+\clearpage
+\newpage
 
 
 ```{r, fig.cap="Boxplot of Lutein and Zeaxanthin by rs6564851 genotype"}
@@ -239,7 +254,7 @@ ggplot(data = pheno.geno.sub[which(pheno.geno.sub$adjlutzea>0),], # there is one
   #   trans = "log10"
   # ) +
   theme_bw(base_size=15) +
-  labs(y="Adjusted lutein and zeaxanthine (mcg/mL)",
+  labs(y="Adjusted lutein and zeaxanthin (mcg/mL)",
        x="Genotype, rs6564851")
 
 
